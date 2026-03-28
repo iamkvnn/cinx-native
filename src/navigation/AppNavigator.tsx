@@ -1,43 +1,80 @@
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import type { ReactElement } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import {
+  createNativeStackNavigator,
+  type NativeStackScreenProps,
+} from "@react-navigation/native-stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 
-type RootStackParamList = {
+// Import Screens
+import LoginScreen from "../screens/auth/LoginScreen";
+import HomeScreen from "../screens/main/HomeScreen";
+import MyLearningScreen from "../screens/main/MyLearningScreen";
+import CartScreen from "../screens/ecommerce/CartScreen";
+import ProfileScreen from "../screens/profile/ProfileScreen";
+import CourseDetailScreen from "../screens/course/CourseDetailScreen";
+import CheckoutScreen from "../screens/ecommerce/CheckoutScreen";
+
+export type RootStackParamList = {
   Login: undefined;
   MainTabs: undefined;
+  CourseDetail: { courseId?: string };
+  Checkout: undefined;
 };
 
-type MainTabParamList = {
-  Placeholder: undefined;
+export type MainTabParamList = {
+  Home: undefined;
+  MyLearning: undefined;
+  Cart: undefined;
+  Profile: undefined;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-function LoginScreen(): ReactElement {
-  return (
-    <View style={styles.centeredScreen}>
-      <Text style={styles.label}>Login Screen</Text>
-    </View>
-  );
-}
-
-function PlaceholderTabScreen(): ReactElement {
-  return (
-    <View style={styles.centeredScreen}>
-      <Text style={styles.label}>Main Tabs Placeholder</Text>
-    </View>
-  );
-}
-
 function MainTabs(): ReactElement {
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }}>
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: "#2563eb",
+        tabBarInactiveTintColor: "#94a3b8",
+        tabBarStyle: {
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+      }}
+    >
       <Tab.Screen
-        name="Placeholder"
-        component={PlaceholderTabScreen}
-        options={{ title: "Main" }}
+        name="Home"
+        component={HomeScreen}
+        options={{
+          title: "Khám Phá",
+          tabBarLabel: "Khám Phá",
+        }}
+      />
+      <Tab.Screen
+        name="MyLearning"
+        component={MyLearningScreen}
+        options={{
+          title: "Học Tập",
+          tabBarLabel: "Học Tập",
+        }}
+      />
+      <Tab.Screen
+        name="Cart"
+        component={CartScreen}
+        options={{
+          title: "Giỏ Hàng",
+          tabBarLabel: "Giỏ Hàng",
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: "Hồ Sơ",
+          tabBarLabel: "Hồ Sơ",
+        }}
       />
     </Tab.Navigator>
   );
@@ -48,20 +85,24 @@ export default function AppNavigator(): ReactElement {
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="Login" component={LoginScreen} />
       <RootStack.Screen name="MainTabs" component={MainTabs} />
+      <RootStack.Screen
+        name="CourseDetail"
+        component={CourseDetailScreen}
+        options={{
+          title: "Chi Tiết Khóa Học",
+          headerShown: true,
+          headerTintColor: "#2563eb",
+        }}
+      />
+      <RootStack.Screen
+        name="Checkout"
+        component={CheckoutScreen}
+        options={{
+          title: "Thanh Toán",
+          headerShown: true,
+          headerTintColor: "#2563eb",
+        }}
+      />
     </RootStack.Navigator>
   );
 }
-
-const styles = StyleSheet.create({
-  centeredScreen: {
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    flex: 1,
-    justifyContent: "center",
-  },
-  label: {
-    color: "#0f172a",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-});
