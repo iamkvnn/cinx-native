@@ -6,7 +6,7 @@ module.exports = {
     extend: {
       colors: {
         primary: {
-          DEFAULT: "#4F46E5", // Indigo 600
+          DEFAULT: "#7958ee", // Indigo 600
           light: "#818CF8", // Indigo 400
           dark: "#3730A3", // Indigo 800
         },

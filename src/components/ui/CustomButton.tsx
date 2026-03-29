@@ -1,11 +1,11 @@
 import type { ReactElement } from "react";
-import { TouchableOpacity, Text } from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity } from "react-native";
 
 interface CustomButtonProps {
   title: string;
   onPress: () => void;
   disabled?: boolean;
-  variant?: "primary" | "secondary" | "outline";
+  isLoading?: boolean;
   className?: string;
 }
 
@@ -13,35 +13,23 @@ export default function CustomButton({
   title,
   onPress,
   disabled = false,
-  variant = "primary",
+  isLoading = false,
   className = "",
 }: CustomButtonProps): ReactElement {
-  const baseClass = "py-3 px-6 rounded-lg items-center justify-center";
-
-  const variantClass = {
-    primary: "bg-blue-600",
-    secondary: "bg-gray-600",
-    outline: "bg-white border border-blue-600",
-  }[variant];
-
-  const textColorClass = {
-    primary: "text-white",
-    secondary: "text-white",
-    outline: "text-blue-600",
-  }[variant];
-
-  const disabledClass = disabled ? "opacity-50" : "";
+  const disabledClass = disabled || isLoading ? "opacity-60" : "";
 
   return (
     <TouchableOpacity
       onPress={onPress}
-      disabled={disabled}
-      className={`${baseClass} ${variantClass} ${disabledClass} ${className}`}
+      disabled={disabled || isLoading}
+      className={`w-full py-4 px-6 rounded-xl items-center justify-center bg-primary ${disabledClass} ${className}`}
       activeOpacity={0.7}
     >
-      <Text className={`text-base font-semibold ${textColorClass}`}>
-        {title}
-      </Text>
+      {isLoading ? (
+        <ActivityIndicator color="#FFF" />
+      ) : (
+        <Text className="text-base font-semibold text-white">{title}</Text>
+      )}
     </TouchableOpacity>
   );
 }
