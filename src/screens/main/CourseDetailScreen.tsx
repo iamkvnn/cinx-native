@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { ReactElement } from "react";
 import { Pressable, SafeAreaView, ScrollView, Text, View } from "react-native";
+import AppScreenBackground from "../../components/ui/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 
 type CourseDetailScreenProps = NativeStackScreenProps<
@@ -16,7 +17,8 @@ export default function CourseDetailScreen({
   const courseId = route.params?.courseId || "unknown";
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <SafeAreaView className="flex-1 bg-transparent">
+      <AppScreenBackground />
       <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
         {/* Header */}
         <View className="flex-row items-center justify-between px-6 py-4">

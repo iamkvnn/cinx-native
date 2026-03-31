@@ -1,32 +1,47 @@
 import type { ReactElement } from "react";
+import type { NavigatorScreenParams } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { useQuery } from "@tanstack/react-query";
+import {
+  createMaterialTopTabNavigator,
+  type MaterialTopTabBarProps,
+} from "@react-navigation/material-top-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BlurView } from "expo-blur";
+import { useAuthStore } from "../store/useAuthStore";
 
 // Import Screens
 import LoginScreen from "../screens/auth/LoginScreen";
 import HomeScreen from "../screens/main/HomeScreen";
 import ExploreScreen from "../screens/main/ExploreScreen";
 import MyLearningScreen from "../screens/main/MyLearningScreen";
-import ProfileScreen from "../screens/profile/ProfileScreen";
+import { ProfileScreen, PurchaseHistoryScreen } from "../screens/profile";
 import CourseDetailScreen from "../screens/course/CourseDetailScreen";
+import CartScreen from "../screens/ecommerce/CartScreen";
 import CheckoutScreen from "../screens/ecommerce/CheckoutScreen";
+import LandingPage from "../screens/landing/LandingPage";
+import { fetchCart } from "../services/api/cartApi";
 import {
   MyCertificatesScreen,
   DownloadedFilesScreen,
-  OrderHistoryScreen,
   VouchersScreen,
   PaymentMethodsScreen,
   HelpCenterScreen,
 } from "../screens/profile/ProfileMenuScreens";
 
 export type RootStackParamList = {
-  Login: undefined;
-  MainTabs: undefined;
+  Landing: undefined;
+  Login:
+    | {
+        redirectTo?: "CourseDetail";
+        courseId?: string;
+      }
+    | undefined;
+  MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   CourseDetail: { courseId?: string };
-  Checkout: undefined;
+  Cart: undefined;
+  Checkout: { orderId?: string };
   MyCertificates: undefined;
   DownloadedFiles: undefined;
   OrderHistory: undefined;
@@ -39,33 +54,108 @@ export type MainTabParamList = {
   Home: undefined;
   Explore: undefined;
   MyLearning: undefined;
+  Cart: undefined;
   Profile: undefined;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator<MainTabParamList>();
+const Tab = createMaterialTopTabNavigator<MainTabParamList>();
+
+const TAB_ICON_MAP: Record<
+  keyof MainTabParamList,
+  "home" | "search" | "bookmark" | "cart" | "person"
+> = {
+  Home: "home",
+  Explore: "search",
+  MyLearning: "bookmark",
+  Cart: "cart",
+  Profile: "person",
+};
+
+function GlassSwipeTabBar({
+  state,
+  descriptors,
+  navigation,
+  cartCount,
+}: MaterialTopTabBarProps & { cartCount: number }): ReactElement {
+  return (
+    <View style={styles.tabBar}>
+      <View style={styles.tabBarBackgroundContainer} pointerEvents="none">
+        <BlurView
+          intensity={60}
+          tint="light"
+          style={styles.blurFill}
+          experimentalBlurMethod="dimezisBlurView"
+        />
+        <View style={styles.tabBarGlassTint} />
+      </View>
+
+      <View style={styles.tabItemsRow}>
+        {state.routes.map((route, index) => {
+          const isFocused = state.index === index;
+          const color = isFocused ? "#7958ee" : "#64748b";
+          const iconName = TAB_ICON_MAP[route.name as keyof MainTabParamList];
+          const { options } = descriptors[route.key];
+          const tabBadge = route.name === "Cart" ? cartCount : 0;
+
+          const onPress = (): void => {
+            const event = navigation.emit({
+              type: "tabPress",
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
+          };
+
+          return (
+            <Pressable
+              key={route.key}
+              onPress={onPress}
+              accessibilityRole="button"
+              accessibilityState={isFocused ? { selected: true } : {}}
+              accessibilityLabel={options.tabBarAccessibilityLabel}
+              testID={options.tabBarButtonTestID}
+              style={styles.tabButton}
+            >
+              <Ionicons name={iconName} size={24} color={color} />
+              {tabBadge > 0 ? (
+                <View style={styles.tabBadgeTextWrap}>
+                  <View style={styles.tabBadgePill}>
+                    <Text style={styles.tabBadgeText}>
+                      {tabBadge > 99 ? "99+" : tabBadge}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 
 function MainTabs(): ReactElement {
+  const user = useAuthStore((state) => state.user);
+  const cartQuery = useQuery({
+    queryKey: ["cart"],
+    queryFn: fetchCart,
+    enabled: Boolean(user),
+    retry: false,
+  });
+  const cartCount = cartQuery.data?.items?.length || 0;
+
   return (
     <Tab.Navigator
+      tabBarPosition="bottom"
+      tabBar={(props) => <GlassSwipeTabBar {...props} cartCount={cartCount} />}
       screenOptions={{
-        headerShown: false,
-        tabBarShowLabel: false,
-        tabBarActiveTintColor: "#7958ee",
-        tabBarInactiveTintColor: "#64748b",
-        tabBarHideOnKeyboard: true,
-        tabBarStyle: styles.tabBar,
-        tabBarBackground: () => (
-          <View style={styles.tabBarBackgroundContainer}>
-            <BlurView
-              intensity={60}
-              tint="light"
-              style={styles.blurFill}
-              experimentalBlurMethod="dimezisBlurView"
-            />
-            <View style={styles.tabBarGlassTint} />
-          </View>
-        ),
+        swipeEnabled: true,
+        animationEnabled: true,
+        lazy: false,
       }}
     >
       <Tab.Screen
@@ -73,9 +163,6 @@ function MainTabs(): ReactElement {
         component={HomeScreen}
         options={{
           title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={size ?? 24} color={color} />
-          ),
         }}
       />
       <Tab.Screen
@@ -83,9 +170,6 @@ function MainTabs(): ReactElement {
         component={ExploreScreen}
         options={{
           title: "Explore",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="search" size={size ?? 24} color={color} />
-          ),
         }}
       />
       <Tab.Screen
@@ -93,9 +177,13 @@ function MainTabs(): ReactElement {
         component={MyLearningScreen}
         options={{
           title: "My learning",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="bookmark" size={size ?? 24} color={color} />
-          ),
+        }}
+      />
+      <Tab.Screen
+        name="Cart"
+        component={CartScreen}
+        options={{
+          title: "Cart",
         }}
       />
       <Tab.Screen
@@ -103,9 +191,6 @@ function MainTabs(): ReactElement {
         component={ProfileScreen}
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size ?? 24} color={color} />
-          ),
         }}
       />
     </Tab.Navigator>
@@ -113,92 +198,98 @@ function MainTabs(): ReactElement {
 }
 
 export default function AppNavigator(): ReactElement {
+  const user = useAuthStore((state) => state.user);
+
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      <RootStack.Screen name="Login" component={LoginScreen} />
-      <RootStack.Screen name="MainTabs" component={MainTabs} />
-      <RootStack.Screen
-        name="CourseDetail"
-        component={CourseDetailScreen}
-        options={{
-          title: "Chi Tiết Khóa Học",
-          headerShown: true,
-          headerTintColor: "#2563eb",
-        }}
-      />
-      <RootStack.Screen
-        name="Checkout"
-        component={CheckoutScreen}
-        options={{
-          title: "Thanh Toán",
-          headerShown: true,
-          headerTintColor: "#2563eb",
-        }}
-      />
-      <RootStack.Screen
-        name="MyCertificates"
-        component={MyCertificatesScreen}
-        options={{
-          title: "Chứng chỉ của tôi",
-          headerShown: true,
-          headerTintColor: "#2563eb",
-        }}
-      />
-      <RootStack.Screen
-        name="DownloadedFiles"
-        component={DownloadedFilesScreen}
-        options={{
-          title: "Tài liệu đã tải",
-          headerShown: true,
-          headerTintColor: "#2563eb",
-        }}
-      />
-      <RootStack.Screen
-        name="OrderHistory"
-        component={OrderHistoryScreen}
-        options={{
-          title: "Lịch sử đơn hàng",
-          headerShown: true,
-          headerTintColor: "#2563eb",
-        }}
-      />
-      <RootStack.Screen
-        name="Vouchers"
-        component={VouchersScreen}
-        options={{
-          title: "Mã giảm giá",
-          headerShown: true,
-          headerTintColor: "#2563eb",
-        }}
-      />
-      <RootStack.Screen
-        name="PaymentMethods"
-        component={PaymentMethodsScreen}
-        options={{
-          title: "Phương thức thanh toán",
-          headerShown: true,
-          headerTintColor: "#2563eb",
-        }}
-      />
-      <RootStack.Screen
-        name="HelpCenter"
-        component={HelpCenterScreen}
-        options={{
-          title: "Trung tâm trợ giúp",
-          headerShown: true,
-          headerTintColor: "#2563eb",
-        }}
-      />
+      {user ? (
+        <RootStack.Group screenOptions={{ headerShown: false }}>
+          <RootStack.Screen name="MainTabs" component={MainTabs} />
+          <RootStack.Screen
+            name="Cart"
+            component={CartScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen
+            name="Checkout"
+            component={CheckoutScreen}
+            options={{
+              title: "Thanh Toán",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+            }}
+          />
+          <RootStack.Screen
+            name="MyCertificates"
+            component={MyCertificatesScreen}
+            options={{
+              title: "Chứng chỉ của tôi",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+            }}
+          />
+          <RootStack.Screen
+            name="DownloadedFiles"
+            component={DownloadedFilesScreen}
+            options={{
+              title: "Tài liệu đã tải",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+            }}
+          />
+          <RootStack.Screen
+            name="OrderHistory"
+            component={PurchaseHistoryScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen
+            name="Vouchers"
+            component={VouchersScreen}
+            options={{
+              title: "Mã giảm giá",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+            }}
+          />
+          <RootStack.Screen
+            name="PaymentMethods"
+            component={PaymentMethodsScreen}
+            options={{
+              title: "Phương thức thanh toán",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+            }}
+          />
+          <RootStack.Screen
+            name="HelpCenter"
+            component={HelpCenterScreen}
+            options={{
+              title: "Trung tâm trợ giúp",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+            }}
+          />
+        </RootStack.Group>
+      ) : (
+        <RootStack.Group screenOptions={{ headerShown: false }}>
+          <RootStack.Screen name="Landing" component={LandingPage} />
+          <RootStack.Screen name="Login" component={LoginScreen} />
+        </RootStack.Group>
+      )}
+
+      <RootStack.Group screenOptions={{ headerShown: false }}>
+        <RootStack.Screen name="CourseDetail" component={CourseDetailScreen} />
+      </RootStack.Group>
     </RootStack.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
   tabBar: {
-    display: "flex",
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
     position: "absolute",
     left: 0,
     right: 0,
@@ -209,6 +300,39 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     elevation: 0,
     overflow: "hidden",
+  },
+  tabItemsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flex: 1,
+    paddingHorizontal: 6,
+  },
+  tabButton: {
+    flex: 1,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  tabBadgeTextWrap: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+  },
+  tabBadgePill: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 999,
+    backgroundColor: "#ef4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  tabBadgeText: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "800",
   },
   tabBarBackgroundContainer: {
     ...StyleSheet.absoluteFillObject,

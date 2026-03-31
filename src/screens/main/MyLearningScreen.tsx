@@ -8,6 +8,7 @@ import {
   Animated,
   Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,12 +16,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import AppScreenBackground from "../../components/ui/AppScreenBackground";
 
 import {
+  fetchMyCourses,
   fetchDailyGoalsMock,
   fetchMyLearningCoursesMock,
   fetchMyLearningDataMock,
 } from "../../services/api/myLearningApi";
+import { useAuthStore } from "../../store/useAuthStore";
 import type {
   CompletedCourse,
   DailyGoal,
@@ -31,6 +35,8 @@ import type { RootStackParamList } from "../../navigation/AppNavigator";
 
 const CALENDAR_CELL_SIZE = 52;
 const CALENDAR_DAY_SIZE = 44;
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1200&q=80";
 
 interface CalendarDay {
   day: number | null;
@@ -375,10 +381,12 @@ function CalendarDayCell({
 export default function MyLearningScreen(): ReactElement {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const user = useAuthStore((state) => state.user);
   const [selectedDay, setSelectedDay] = useState(24);
   const [currentMonth, setCurrentMonth] = useState(5); // May
   const [currentYear, setCurrentYear] = useState(2026);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<"progress" | "completed">(
     "progress",
   );
@@ -387,20 +395,44 @@ export default function MyLearningScreen(): ReactElement {
   const liquidCursorAnim = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const liquidScaleAnim = useRef(new Animated.Value(1)).current;
 
-  const { data: calendarData, isLoading: calendarLoading } = useQuery({
+  const calendarQuery = useQuery({
     queryKey: ["my-learning-calendar"],
     queryFn: fetchMyLearningDataMock,
   });
+  const calendarData = calendarQuery.data;
+  const calendarLoading = calendarQuery.isLoading;
 
-  const { data: goalsData, isLoading: goalsLoading } = useQuery({
+  const goalsQuery = useQuery({
     queryKey: ["daily-goals", selectedDay],
     queryFn: () => fetchDailyGoalsMock(selectedDay),
   });
+  const goalsData = goalsQuery.data;
+  const goalsLoading = goalsQuery.isLoading;
 
-  const { data: coursesData, isLoading: coursesLoading } = useQuery({
+  const realCoursesQuery = useQuery({
+    queryKey: ["my-learning-real-courses"],
+    queryFn: fetchMyCourses,
+  });
+
+  const mockCoursesQuery = useQuery({
     queryKey: ["my-learning-courses"],
     queryFn: fetchMyLearningCoursesMock,
   });
+
+  const realInProgressCourses = useMemo<MyLearningCourse[]>(() => {
+    return (realCoursesQuery.data ?? []).map((item) => ({
+      id: String(item.course?.id ?? item.courseId),
+      title: item.course?.title ?? item.title ?? "Khóa học",
+      imageUrl:
+        item.course?.thumbnailUrl ??
+        item.course?.thumbnail_url ??
+        item.image ??
+        FALLBACK_IMAGE,
+      progress: Number(item.progressPercentage ?? 0),
+      nextLesson: "Bài học tiếp theo",
+      color: "violet",
+    }));
+  }, [realCoursesQuery.data]);
 
   // Generate calendar days
   const calendarDays = useMemo(() => {
@@ -451,12 +483,10 @@ export default function MyLearningScreen(): ReactElement {
 
   const streak = calendarData?.streakStats.currentStreak ?? 0;
   const xp = calendarData?.streakStats.totalXP ?? 0;
-  const avatar = calendarData?.userAvatar ?? "";
-
-  const inProgressCourses =
-    activeTab === "progress"
-      ? (coursesData?.inProgress ?? [])
-      : (coursesData?.completed ?? []);
+  const profileAvatar = (user?.profile as { avatar?: string } | undefined)
+    ?.avatar;
+  const avatar =
+    profileAvatar ?? user?.avatar ?? calendarData?.userAvatar ?? "";
 
   const handleSelectDay = (day: number) => {
     setSelectedDay(day);
@@ -477,12 +507,36 @@ export default function MyLearningScreen(): ReactElement {
     });
   };
 
+  const onRefresh = async (): Promise<void> => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        calendarQuery.refetch(),
+        goalsQuery.refetch(),
+        realCoursesQuery.refetch(),
+        mockCoursesQuery.refetch(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <SafeAreaView className="flex-1 bg-transparent">
+      <AppScreenBackground />
       <ScrollView
         showsVerticalScrollIndicator={false}
         className="flex-1"
         contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              void onRefresh();
+            }}
+            tintColor="#8b5cf6"
+          />
+        }
       >
         {/* Header */}
         <View className="px-6 pt-6 pb-6">
@@ -661,7 +715,7 @@ export default function MyLearningScreen(): ReactElement {
                 activeTab === "progress" ? "text-slate-900" : "text-slate-600"
               }`}
             >
-              Đang học (3)
+              Đang học ({realInProgressCourses.length})
             </Text>
           </Pressable>
           <Pressable
@@ -675,41 +729,47 @@ export default function MyLearningScreen(): ReactElement {
                 activeTab === "completed" ? "text-slate-900" : "text-slate-600"
               }`}
             >
-              Chứng chỉ (12)
+              Chứng chỉ ({mockCoursesQuery.data?.completed.length ?? 0})
             </Text>
           </Pressable>
         </View>
 
         {/* Course List */}
-        {coursesLoading ? (
-          <View className="mx-6 items-center justify-center py-8">
-            <ActivityIndicator size="large" color="#9333ea" />
-          </View>
-        ) : (
-          <View className="mx-6 mb-8">
-            {activeTab === "progress" ? (
-              <>
-                {(coursesData?.inProgress ?? []).map((course) => (
-                  <CourseInProgressCard
-                    key={course.id}
-                    course={course}
-                    onPress={() => {
-                      navigation.navigate("CourseDetail", {
-                        courseId: course.id,
-                      });
-                    }}
-                  />
-                ))}
-              </>
+        <View className="mx-6 mb-8">
+          {activeTab === "progress" ? (
+            realCoursesQuery.isLoading ? (
+              <View className="items-center justify-center py-8">
+                <ActivityIndicator size="large" color="#9333ea" />
+              </View>
+            ) : realInProgressCourses.length === 0 ? (
+              <View className="items-center justify-center py-6">
+                <Text className="text-sm font-semibold text-slate-500">
+                  Bạn chưa học khóa nào
+                </Text>
+              </View>
             ) : (
-              <>
-                {(coursesData?.completed ?? []).map((course) => (
-                  <CompletedCourseCard key={course.id} course={course} />
-                ))}
-              </>
-            )}
-          </View>
-        )}
+              realInProgressCourses.map((course) => (
+                <CourseInProgressCard
+                  key={course.id}
+                  course={course}
+                  onPress={() => {
+                    navigation.navigate("CourseDetail", {
+                      courseId: course.id,
+                    });
+                  }}
+                />
+              ))
+            )
+          ) : mockCoursesQuery.isLoading ? (
+            <View className="items-center justify-center py-8">
+              <ActivityIndicator size="large" color="#9333ea" />
+            </View>
+          ) : (
+            (mockCoursesQuery.data?.completed ?? []).map((course) => (
+              <CompletedCourseCard key={course.id} course={course} />
+            ))
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -754,20 +814,20 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   glassPanel: {
-    backgroundColor: "rgba(255, 255, 255, 0.65)",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.6)",
     borderRadius: 24,
     overflow: "hidden",
   },
   glassButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.5)",
     borderRadius: 16,
   },
   glassModal: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.5)",
     borderRadius: 24,

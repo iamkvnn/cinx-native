@@ -1,13 +1,12 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { CommonActions } from "@react-navigation/native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import axios from "axios";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import {
   Animated,
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,32 +16,53 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { RootStackParamList } from "../../navigation/AppNavigator";
-import { loginMock } from "../../services/api/authApi";
+import AppScreenBackground from "../../components/ui/AppScreenBackground";
+import { register as registerApi, sendOtp } from "../../services/api/authApi";
 import { useAuthStore } from "../../store/useAuthStore";
 import CustomButton from "../../components/ui/CustomButton";
 import CustomInput from "../../components/ui/CustomInput";
+import Logo from "../../components/ui/Logo";
 
-const ACCESS_TOKEN_STORAGE_KEY = "accessToken";
-const REFRESH_TOKEN_STORAGE_KEY = "refreshToken";
+type LoginScreenProps = NativeStackScreenProps<RootStackParamList, "Login">;
 
-export default function LoginScreen(): ReactElement {
-  const navigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+const getApiErrorMessage = (error: unknown, fallback: string): string => {
+  if (axios.isAxiosError(error)) {
+    const message =
+      (error.response?.data as { message?: string } | undefined)?.message ??
+      (error.response?.data as { error?: string } | undefined)?.error;
+
+    return message ?? fallback;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
+export default function LoginScreen({
+  navigation,
+  route,
+}: LoginScreenProps): ReactElement {
   const login = useAuthStore((state) => state.login);
+  const isLoading = useAuthStore((state) => state.isLoading);
 
-  const [email, setEmail] = useState("23110119@student.hcmute.edu.vn");
-  const [password, setPassword] = useState("123456");
+  const [email, setEmail] = useState("imkai512@gmail.com");
+  const [password, setPassword] = useState("nguyen512");
   const [fullName, setFullName] = useState("");
   const [registerEmail, setRegisterEmail] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState("");
+  const [registerOtp, setRegisterOtp] = useState("");
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [registerStep, setRegisterStep] = useState<1 | 2>(1);
+  const [isRegisterLoading, setIsRegisterLoading] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] =
     useState(false);
   const [switcherWidth, setSwitcherWidth] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
 
   const indicatorAnim = useRef(new Animated.Value(0)).current;
   const formAnim = useRef(new Animated.Value(1)).current;
@@ -70,38 +90,126 @@ export default function LoginScreen(): ReactElement {
     }
 
     try {
-      setIsLoading(true);
+      await login(email, password);
 
-      const response = await loginMock(email, password);
-      const { accessToken, refreshToken } = response.data;
+      const redirectTo = route.params?.redirectTo;
+      const redirectCourseId = route.params?.courseId;
 
-      await AsyncStorage.multiSet([
-        [ACCESS_TOKEN_STORAGE_KEY, accessToken],
-        [REFRESH_TOKEN_STORAGE_KEY, refreshToken],
-      ]);
+      if (redirectTo === "CourseDetail") {
+        navigation.dispatch(
+          CommonActions.reset({
+            index: 1,
+            routes: [
+              { name: "MainTabs" },
+              {
+                name: "CourseDetail",
+                params: { courseId: redirectCourseId },
+              },
+            ],
+          }),
+        );
+        return;
+      }
 
-      login(accessToken, refreshToken);
-      navigation.replace("MainTabs");
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: "MainTabs" }],
+        }),
+      );
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Đăng nhập thất bại.";
       Alert.alert("Lỗi đăng nhập", message);
+    }
+  };
+
+  const handleSendRegisterOtp = async (): Promise<void> => {
+    const trimmedFullName = fullName.trim();
+    const trimmedEmail = registerEmail.trim().toLowerCase();
+    const trimmedPassword = registerPassword.trim();
+    const trimmedConfirmPassword = registerConfirmPassword.trim();
+
+    if (
+      !trimmedFullName ||
+      !trimmedEmail ||
+      !trimmedPassword ||
+      !trimmedConfirmPassword
+    ) {
+      Alert.alert("Thiếu thông tin", "Vui lòng điền đầy đủ thông tin đăng ký.");
+      return;
+    }
+
+    if (trimmedPassword !== trimmedConfirmPassword) {
+      Alert.alert(
+        "Mật khẩu không khớp",
+        "Vui lòng nhập lại mật khẩu xác nhận.",
+      );
+      return;
+    }
+
+    try {
+      setIsRegisterLoading(true);
+      await sendOtp({ email: trimmedEmail, purpose: "REGISTER" });
+      setRegisterStep(2);
+      Alert.alert("Thành công", "Mã OTP đã được gửi đến email của bạn.");
+    } catch (error) {
+      const message = getApiErrorMessage(
+        error,
+        "Không thể gửi OTP. Vui lòng thử lại.",
+      );
+      Alert.alert("Gửi OTP thất bại", message);
     } finally {
-      setIsLoading(false);
+      setIsRegisterLoading(false);
+    }
+  };
+
+  const handleConfirmRegister = async (): Promise<void> => {
+    const trimmedFullName = fullName.trim();
+    const trimmedEmail = registerEmail.trim().toLowerCase();
+    const trimmedPassword = registerPassword.trim();
+    const trimmedOtp = registerOtp.trim();
+
+    if (!trimmedOtp) {
+      Alert.alert("Thiếu OTP", "Vui lòng nhập mã OTP 6 chữ số.");
+      return;
+    }
+
+    try {
+      setIsRegisterLoading(true);
+      await registerApi({
+        email: trimmedEmail,
+        password: trimmedPassword,
+        fullName: trimmedFullName,
+        otp: trimmedOtp,
+      });
+
+      Alert.alert("Thành công", "Đăng ký thành công. Vui lòng đăng nhập.", [
+        {
+          text: "OK",
+          onPress: () => {
+            setAuthMode("login");
+            setRegisterStep(1);
+            setRegisterOtp("");
+            setEmail(trimmedEmail);
+            setPassword("");
+          },
+        },
+      ]);
+    } catch (error) {
+      const message = getApiErrorMessage(
+        error,
+        "Đăng ký thất bại. Vui lòng thử lại.",
+      );
+      Alert.alert("Lỗi đăng ký", message);
+    } finally {
+      setIsRegisterLoading(false);
     }
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <View className="absolute -top-24 -left-20 h-72 w-72 overflow-hidden rounded-full">
-        <View className="absolute inset-0 rounded-full bg-blue-200/60" />
-      </View>
-      <View className="absolute top-28 -right-24 h-80 w-80 overflow-hidden rounded-full">
-        <View className="absolute inset-0 rounded-full bg-violet-200/60" />
-      </View>
-      <View className="absolute -bottom-24 left-16 h-72 w-72 overflow-hidden rounded-full">
-        <View className="absolute inset-0 rounded-full bg-fuchsia-200/60" />
-      </View>
+    <SafeAreaView className="flex-1 bg-transparent">
+      <AppScreenBackground />
 
       <ScrollView
         contentContainerClassName="flex-grow items-center justify-center px-4 py-8"
@@ -109,13 +217,9 @@ export default function LoginScreen(): ReactElement {
       >
         <View className="w-full max-w-[420px] overflow-hidden rounded-[40px] border border-white/70 bg-white/20 backdrop-blur-lg">
           <BlurView intensity={20} tint="extraLight" style={styles.blurFill} />
-          <View className="bg-white/20 p-6 backdrop-blur-md">
+          <View className="bg-white/10 p-6 backdrop-blur-md">
             <View className="items-center mb-8">
-              <Image
-                source={require("../../assets/images/logo.png")}
-                className="h-12 w-56"
-                resizeMode="contain"
-              />
+              <Logo />
               <Text className="mt-1 text-sm font-medium text-muted">
                 Học tập không giới hạn
               </Text>
@@ -143,7 +247,10 @@ export default function LoginScreen(): ReactElement {
               />
               <Pressable
                 className="flex-1 items-center py-3"
-                onPress={() => setAuthMode("login")}
+                onPress={() => {
+                  setAuthMode("login");
+                  setRegisterStep(1);
+                }}
               >
                 <Text
                   className={`text-sm font-bold ${
@@ -155,7 +262,10 @@ export default function LoginScreen(): ReactElement {
               </Pressable>
               <Pressable
                 className="flex-1 items-center py-3"
-                onPress={() => setAuthMode("register")}
+                onPress={() => {
+                  setAuthMode("register");
+                  setRegisterStep(1);
+                }}
               >
                 <Text
                   className={`text-sm font-bold ${
@@ -233,88 +343,134 @@ export default function LoginScreen(): ReactElement {
                 </View>
               ) : (
                 <View className="gap-5">
-                  <CustomInput
-                    value={fullName}
-                    onChangeText={setFullName}
-                    placeholder="Họ và tên"
-                    autoCapitalize="words"
-                    leftIcon={
-                      <Ionicons
-                        name="person-outline"
-                        size={20}
-                        color="#64748b"
-                      />
-                    }
-                  />
-                  <CustomInput
-                    value={registerEmail}
-                    onChangeText={setRegisterEmail}
-                    placeholder="Email"
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    leftIcon={
-                      <Ionicons name="mail-outline" size={20} color="#64748b" />
-                    }
-                  />
-                  <CustomInput
-                    value={registerPassword}
-                    onChangeText={setRegisterPassword}
-                    placeholder="Tạo mật khẩu"
-                    secureTextEntry={!showRegisterPassword}
-                    leftIcon={
-                      <Ionicons
-                        name="lock-closed-outline"
-                        size={20}
-                        color="#64748b"
-                      />
-                    }
-                    rightIcon={
-                      <Ionicons
-                        name={
-                          showRegisterPassword
-                            ? "eye-off-outline"
-                            : "eye-outline"
+                  {registerStep === 1 ? (
+                    <>
+                      <CustomInput
+                        value={fullName}
+                        onChangeText={setFullName}
+                        placeholder="Họ và tên"
+                        autoCapitalize="words"
+                        leftIcon={
+                          <Ionicons
+                            name="person-outline"
+                            size={20}
+                            color="#64748b"
+                          />
                         }
-                        size={20}
-                        color="#64748b"
                       />
-                    }
-                    onPressRightIcon={() =>
-                      setShowRegisterPassword((prev) => !prev)
-                    }
-                  />
-                  <CustomInput
-                    value={registerConfirmPassword}
-                    onChangeText={setRegisterConfirmPassword}
-                    placeholder="Nhập lại mật khẩu"
-                    secureTextEntry={!showRegisterConfirmPassword}
-                    leftIcon={
-                      <Ionicons
-                        name="checkmark-circle-outline"
-                        size={20}
-                        color="#64748b"
-                      />
-                    }
-                    rightIcon={
-                      <Ionicons
-                        name={
-                          showRegisterConfirmPassword
-                            ? "eye-off-outline"
-                            : "eye-outline"
+                      <CustomInput
+                        value={registerEmail}
+                        onChangeText={setRegisterEmail}
+                        placeholder="Email"
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        leftIcon={
+                          <Ionicons
+                            name="mail-outline"
+                            size={20}
+                            color="#64748b"
+                          />
                         }
-                        size={20}
-                        color="#64748b"
                       />
-                    }
-                    onPressRightIcon={() =>
-                      setShowRegisterConfirmPassword((prev) => !prev)
-                    }
-                  />
-                  <CustomButton
-                    title="Tạo tài khoản"
-                    onPress={() => undefined}
-                    className="rounded-2xl"
-                  />
+                      <CustomInput
+                        value={registerPassword}
+                        onChangeText={setRegisterPassword}
+                        placeholder="Tạo mật khẩu"
+                        secureTextEntry={!showRegisterPassword}
+                        leftIcon={
+                          <Ionicons
+                            name="lock-closed-outline"
+                            size={20}
+                            color="#64748b"
+                          />
+                        }
+                        rightIcon={
+                          <Ionicons
+                            name={
+                              showRegisterPassword
+                                ? "eye-off-outline"
+                                : "eye-outline"
+                            }
+                            size={20}
+                            color="#64748b"
+                          />
+                        }
+                        onPressRightIcon={() =>
+                          setShowRegisterPassword((prev) => !prev)
+                        }
+                      />
+                      <CustomInput
+                        value={registerConfirmPassword}
+                        onChangeText={setRegisterConfirmPassword}
+                        placeholder="Nhập lại mật khẩu"
+                        secureTextEntry={!showRegisterConfirmPassword}
+                        leftIcon={
+                          <Ionicons
+                            name="checkmark-circle-outline"
+                            size={20}
+                            color="#64748b"
+                          />
+                        }
+                        rightIcon={
+                          <Ionicons
+                            name={
+                              showRegisterConfirmPassword
+                                ? "eye-off-outline"
+                                : "eye-outline"
+                            }
+                            size={20}
+                            color="#64748b"
+                          />
+                        }
+                        onPressRightIcon={() =>
+                          setShowRegisterConfirmPassword((prev) => !prev)
+                        }
+                      />
+                      <CustomButton
+                        title="Đăng ký"
+                        onPress={handleSendRegisterOtp}
+                        isLoading={isRegisterLoading}
+                        className="rounded-2xl"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <View className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3">
+                        <Text className="text-sm font-medium text-violet-900">
+                          Mã xác nhận gồm 6 chữ số đã được gửi tới email{" "}
+                          <Text className="font-bold">{registerEmail}</Text>.
+                        </Text>
+                      </View>
+                      <CustomInput
+                        value={registerOtp}
+                        onChangeText={setRegisterOtp}
+                        placeholder="Nhập mã OTP"
+                        keyboardType="number-pad"
+                        leftIcon={
+                          <Ionicons
+                            name="key-outline"
+                            size={20}
+                            color="#64748b"
+                          />
+                        }
+                      />
+                      <CustomButton
+                        title="Xác nhận & Hoàn tất"
+                        onPress={handleConfirmRegister}
+                        isLoading={isRegisterLoading}
+                        className="rounded-2xl"
+                      />
+                      <Pressable
+                        className="self-center"
+                        onPress={() => setRegisterStep(1)}
+                        disabled={isRegisterLoading}
+                      >
+                        <Text className="px-1 py-2 text-xs font-bold text-primary">
+                          Quay lại chỉnh sửa email
+                        </Text>
+                      </Pressable>
+                    </>
+                  )}
                 </View>
               )}
             </Animated.View>

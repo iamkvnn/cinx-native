@@ -9,6 +9,7 @@ export interface ExploreFeaturedCourse {
   description: string;
   instructorName: string;
   rating: number;
+  learnersLabel: string;
   priceLabel: string;
   tagLabel: string;
   imageUrl: string;
@@ -22,6 +23,7 @@ export interface ExploreCourseItem {
   categoryLabel: string;
   durationLabel: string;
   rating: number;
+  learnersLabel: string;
   priceLabel: string;
   imageUrl: string;
 }

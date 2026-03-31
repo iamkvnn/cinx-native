@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { ReactElement } from "react";
 import { Pressable, SafeAreaView, ScrollView, Text, View } from "react-native";
+import AppScreenBackground from "../../components/ui/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 
 type PlaceholderScreenProps = NativeStackScreenProps<
@@ -13,7 +14,8 @@ export function MyCertificatesScreen(
   _props: PlaceholderScreenProps,
 ): ReactElement {
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <SafeAreaView className="flex-1 bg-transparent">
+      <AppScreenBackground />
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="mx-6 my-6 items-center justify-center py-12">
           <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-violet-100">
@@ -33,7 +35,8 @@ export function MyCertificatesScreen(
 
 export function DownloadedFilesScreen(): ReactElement {
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <SafeAreaView className="flex-1 bg-transparent">
+      <AppScreenBackground />
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="mx-6 my-6 items-center justify-center py-12">
           <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-blue-100">
@@ -53,7 +56,8 @@ export function DownloadedFilesScreen(): ReactElement {
 
 export function OrderHistoryScreen(): ReactElement {
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <SafeAreaView className="flex-1 bg-transparent">
+      <AppScreenBackground />
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="mx-6 my-6 items-center justify-center py-12">
           <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-violet-100">
@@ -73,7 +77,8 @@ export function OrderHistoryScreen(): ReactElement {
 
 export function VouchersScreen(): ReactElement {
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <SafeAreaView className="flex-1 bg-transparent">
+      <AppScreenBackground />
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="mx-6 my-6 items-center justify-center py-12">
           <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-pink-100">
@@ -91,7 +96,8 @@ export function VouchersScreen(): ReactElement {
 
 export function PaymentMethodsScreen(): ReactElement {
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <SafeAreaView className="flex-1 bg-transparent">
+      <AppScreenBackground />
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="mx-6 my-6 items-center justify-center py-12">
           <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
@@ -111,7 +117,8 @@ export function PaymentMethodsScreen(): ReactElement {
 
 export function HelpCenterScreen(): ReactElement {
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
+    <SafeAreaView className="flex-1 bg-transparent">
+      <AppScreenBackground />
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="mx-6 my-6 items-center justify-center py-12">
           <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-indigo-100">
