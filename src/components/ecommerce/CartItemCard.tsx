@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { type ReactElement } from "react";
+import { useRef, type ReactElement } from "react";
 import {
   Image,
   Pressable,
@@ -11,6 +11,9 @@ import {
   Animated,
 } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
+
+const QUICK_TAP_THRESHOLD_MS = 220;
+const SWIPE_PRESS_BLOCK_MS = 280;
 
 export interface CartItemCardData {
   id: number;
@@ -44,6 +47,25 @@ export default function CartItemCard({
   onSwipeableWillOpen,
   setSwipeableRef,
 }: CartItemCardProps): ReactElement {
+  const pressStartTimeRef = useRef(0);
+  const pressBlockedUntilRef = useRef(0);
+  const swipeActionOpenRef = useRef(false);
+
+  const handleCardPress = (): void => {
+    const now = Date.now();
+    const pressDuration = now - pressStartTimeRef.current;
+
+    if (pressDuration > QUICK_TAP_THRESHOLD_MS) {
+      return;
+    }
+
+    if (swipeActionOpenRef.current || now < pressBlockedUntilRef.current) {
+      return;
+    }
+
+    onPress(item);
+  };
+
   const handleConfirmDelete = (): void => {
     Alert.alert("Xác nhận", "Bạn có muốn xóa khỏi giỏ?", [
       {
@@ -108,10 +130,24 @@ export default function CartItemCard({
       overshootRight={false}
       rightThreshold={24}
       renderRightActions={renderRightActions}
-      onSwipeableWillOpen={() => onSwipeableWillOpen?.(item.id)}
+      onSwipeableWillOpen={() => {
+        swipeActionOpenRef.current = true;
+        pressBlockedUntilRef.current = Date.now() + SWIPE_PRESS_BLOCK_MS;
+        onSwipeableWillOpen?.(item.id);
+      }}
+      onSwipeableWillClose={() => {
+        pressBlockedUntilRef.current = Date.now() + SWIPE_PRESS_BLOCK_MS;
+      }}
+      onSwipeableClose={() => {
+        swipeActionOpenRef.current = false;
+        pressBlockedUntilRef.current = Date.now() + SWIPE_PRESS_BLOCK_MS;
+      }}
     >
       <Pressable
-        onPress={() => onPress(item)}
+        onPressIn={() => {
+          pressStartTimeRef.current = Date.now();
+        }}
+        onPress={handleCardPress}
         className="mb-4 overflow-hidden rounded-3xl border border-white/85 bg-white/55"
         style={styles.cardShadow}
       >

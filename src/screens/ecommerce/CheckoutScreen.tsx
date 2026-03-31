@@ -72,6 +72,14 @@ const notify = (message: string): void => {
   Alert.alert("Thông báo", message);
 };
 
+const isPendingOrderStatus = (status: unknown): boolean => {
+  return (
+    String(status ?? "")
+      .trim()
+      .toLowerCase() === "pending"
+  );
+};
+
 export default function CheckoutScreen({
   route,
   navigation,
@@ -119,6 +127,7 @@ export default function CheckoutScreen({
   }, [orderItems, orderQuery.data?.totalAmount, orderQuery.data?.total_amount]);
 
   const orderCode = `EDUF-${String(orderId || 0).padStart(6, "0")}`;
+  const isOrderPending = isPendingOrderStatus(orderQuery.data?.status);
   const rewardPoints = Number(user?.rewardPoints ?? 0);
   const maxDiscount = rewardPoints * 1000;
   const discountAmount = useRewardPoints
@@ -128,6 +137,11 @@ export default function CheckoutScreen({
 
   const handleConfirmPayment = async (): Promise<void> => {
     if (!Number.isFinite(orderId) || orderId <= 0 || isProcessing) {
+      return;
+    }
+
+    if (!isOrderPending) {
+      notify("Đơn hàng không còn ở trạng thái chờ thanh toán.");
       return;
     }
 
@@ -384,8 +398,8 @@ export default function CheckoutScreen({
           onPress={() => {
             void handleConfirmPayment();
           }}
-          disabled={isProcessing}
-          className={`h-14 flex-row items-center justify-center gap-2 rounded-2xl ${isProcessing ? "bg-violet-400" : "bg-violet-600"}`}
+          disabled={isProcessing || !isOrderPending}
+          className={`h-14 flex-row items-center justify-center gap-2 rounded-2xl ${isProcessing || !isOrderPending ? "bg-violet-400" : "bg-violet-600"}`}
         >
           {isProcessing ? (
             <ActivityIndicator size="small" color="#ffffff" />

@@ -88,6 +88,14 @@ const getItemPrice = (item: CartItemApi): number => {
   return unitPrice * quantity;
 };
 
+const isPendingOrderStatus = (status: unknown): boolean => {
+  return (
+    String(status ?? "")
+      .trim()
+      .toLowerCase() === "pending"
+  );
+};
+
 const mapCartItem = (item: CartItemApi): CartItemCardData => {
   const course = item.course;
 
@@ -144,8 +152,8 @@ export default function CartScreen(): ReactElement {
   }, [cartItems]);
 
   const pendingOrder = useMemo<OrderApi | undefined>(() => {
-    return (ordersQuery.data ?? []).find(
-      (order) => String(order.status ?? "").toUpperCase() === "PENDING",
+    return (ordersQuery.data ?? []).find((order) =>
+      isPendingOrderStatus(order.status),
     );
   }, [ordersQuery.data]);
 
@@ -197,16 +205,28 @@ export default function CartScreen(): ReactElement {
   };
 
   const handleCheckout = async (): Promise<void> => {
-    if (cartItems.length === 0) {
-      return;
-    }
-
     if (checkoutMutation.isPending) {
       return;
     }
 
+    const latestOrders = await ordersQuery.refetch();
+    const latestPendingOrder = (latestOrders.data ?? []).find((order) =>
+      isPendingOrderStatus(order.status),
+    );
+
+    if (latestPendingOrder?.id) {
+      navigation.navigate("Checkout", {
+        orderId: String(latestPendingOrder.id),
+      });
+      return;
+    }
+
+    if (cartItems.length === 0) {
+      return;
+    }
+
     try {
-      const response = await checkoutMutation.mutateAsync();
+      const response = await checkoutMutation.mutateAsync(undefined);
       const orderId = Number(response?.id);
 
       if (!Number.isFinite(orderId) || orderId <= 0) {
@@ -224,8 +244,8 @@ export default function CartScreen(): ReactElement {
       navigation.navigate("Checkout", { orderId: String(orderId) });
     } catch (error) {
       const refreshedOrders = await ordersQuery.refetch();
-      const pendingFromRefetch = (refreshedOrders.data ?? []).find(
-        (order) => String(order.status ?? "").toUpperCase() === "PENDING",
+      const pendingFromRefetch = (refreshedOrders.data ?? []).find((order) =>
+        isPendingOrderStatus(order.status),
       );
 
       if (pendingFromRefetch?.id) {

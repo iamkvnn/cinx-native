@@ -23,6 +23,7 @@ import CourseAboutTab from "../../components/course/CourseAboutTab";
 import CourseCurriculumTab from "../../components/course/CourseCurriculumTab";
 import CourseReviewsTab from "../../components/course/CourseReviewsTab";
 import AppScreenBackground from "../../components/ui/AppScreenBackground";
+import { fetchCart } from "../../services/api/cartApi";
 import {
   addCourseToCart,
   fetchCourseById,
@@ -125,6 +126,13 @@ export default function CourseDetailScreen({
     retry: false,
   });
 
+  const cartQuery = useQuery({
+    queryKey: ["cart", "list"],
+    queryFn: fetchCart,
+    enabled: Boolean(user),
+    retry: false,
+  });
+
   const course = courseQuery.data;
   const courseTitle = course?.title ?? "Chi tiết khóa học";
 
@@ -187,6 +195,15 @@ export default function CourseDetailScreen({
     return Math.max(0, Math.min(100, Number(target?.progressPercentage ?? 0)));
   }, [courseId, isPurchased, purchasedCoursesQuery.data]);
 
+  const isInCart = useMemo(() => {
+    const cartItems = cartQuery.data?.items ?? [];
+
+    return cartItems.some((item) => {
+      const itemCourseId = Number(item.course?.id ?? 0);
+      return itemCourseId === courseId;
+    });
+  }, [cartQuery.data?.items, courseId]);
+
   const sections = course?.sections ?? [];
 
   const pendingOrder = useMemo(() => {
@@ -217,6 +234,11 @@ export default function CourseDetailScreen({
 
     if (!courseId || Number.isNaN(courseId)) {
       showToast("Không tìm thấy khóa học hợp lệ.");
+      return;
+    }
+
+    if (isInCart) {
+      showToast("Khóa học đã có trong giỏ hàng.");
       return;
     }
 
@@ -282,23 +304,7 @@ export default function CourseDetailScreen({
         return;
       }
 
-      try {
-        await addCourseToCart(courseId);
-      } catch (error) {
-        const message = getApiErrorMessage(
-          error,
-          "Không thể thêm vào giỏ hàng.",
-        );
-        const normalized = message.toLowerCase();
-        const alreadyInCart = normalized.includes("already exists in cart");
-
-        if (!alreadyInCart) {
-          showToast(message);
-          return;
-        }
-      }
-
-      const response = await checkoutOrder();
+      const response = await checkoutOrder({ courseId });
       const orderId = Number(response?.id ?? 0);
 
       if (!Number.isFinite(orderId) || orderId <= 0) {
@@ -312,6 +318,7 @@ export default function CourseDetailScreen({
         queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
         queryClient.invalidateQueries({ queryKey: ["cart", "badge"] }),
         queryClient.invalidateQueries({ queryKey: ["cart"] }),
+        queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
       ]);
 
       navigation.navigate("Checkout", { orderId: String(orderId) });
@@ -588,7 +595,8 @@ export default function CourseDetailScreen({
               <Pressable
                 className="h-12 w-12 items-center justify-center rounded-2xl bg-violet-100"
                 onPress={() => void handleAddToCart()}
-                disabled={isAddingToCart || isBuyingNow}
+                disabled={isAddingToCart || isBuyingNow || isInCart}
+                style={isInCart ? { opacity: 0.45 } : undefined}
               >
                 {isAddingToCart ? (
                   <ActivityIndicator size="small" color="#7c3aed" />

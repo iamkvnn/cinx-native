@@ -59,10 +59,14 @@ const unwrapData = <T>(response: AxiosResponse<T | ApiEnvelope<T>>): T => {
   return payload as T;
 };
 
-export const checkoutOrder = async (): Promise<CheckoutOrderResponseApi> => {
+export const checkoutOrder = async (params?: {
+  courseId?: number;
+}): Promise<CheckoutOrderResponseApi> => {
   const response = await axiosClient.post<
     CheckoutOrderResponseApi | ApiEnvelope<CheckoutOrderResponseApi>
-  >("/orders/checkout", {});
+  >("/orders/checkout", {
+    ...(params?.courseId ? { courseId: params.courseId } : {}),
+  });
 
   return unwrapData(response);
 };
