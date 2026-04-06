@@ -15,8 +15,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import HomeCourseCard from "../../components/home/HomeCourseCard";
-import AppScreenBackground from "../../components/ui/AppScreenBackground";
+import CourseCard from "../../components/domain/course/CourseCard";
+import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 
 import {
   fetchRecommendations,
@@ -486,8 +486,15 @@ export default function HomeScreen(): ReactElement {
           </View>
         ) : (
           recommendationItems.map((item) => (
-            <HomeCourseCard
-              item={item}
+            <CourseCard
+              variant="medium"
+              title={item.title}
+              instructor={item.description}
+              rating={item.rating}
+              learnersLabel={item.learners}
+              priceLabel={item.priceLabel}
+              imageUrl={item.imageUrl}
+              categoryLabel={item.tag}
               key={item.id}
               onPress={() =>
                 navigation.navigate("CourseDetail", {

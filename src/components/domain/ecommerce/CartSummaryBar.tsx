@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 
-import type { OrderApi } from "../../services/api/orderApi";
+import type { OrderApi } from "../../../services/api/orderApi";
 
 interface CartSummaryBarProps {
   totalPrice: number;

@@ -1,42 +1,113 @@
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { type ReactElement, type ReactNode } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-type CourseGlassCardSize = "large" | "compact";
+export type CourseCardVariant =
+  | "default"
+  | "glass"
+  | "medium"
+  | "compact"
+  | "explore";
 
-type CourseGlassCardProps = {
+type CourseCardProps = {
+  variant?: CourseCardVariant;
   title: string;
-  instructor: string;
-  rating: number;
-  learnersLabel: string;
-  priceLabel: string;
   imageUrl: string;
-  categoryLabel: string;
-  size?: CourseGlassCardSize;
   onPress?: () => void;
+  price?: number;
+  priceLabel?: string;
+  buttonLabel?: string;
+  instructor?: string;
+  subtitle?: string;
+  description?: string;
+  rating?: number;
+  learnersLabel?: string;
+  learners?: string;
+  categoryLabel?: string;
+  tag?: string;
   footerRight?: ReactNode;
 };
 
-export default function CourseGlassCard({
+export default function CourseCard({
+  variant = "default",
   title,
+  imageUrl,
+  onPress,
+  price,
+  priceLabel,
+  buttonLabel = "Thêm",
   instructor,
+  subtitle,
+  description,
   rating,
   learnersLabel,
-  priceLabel,
-  imageUrl,
+  learners,
   categoryLabel,
-  size = "large",
-  onPress,
+  tag,
   footerRight,
-}: CourseGlassCardProps): ReactElement {
-  const isCompact = size === "compact";
+}: CourseCardProps): ReactElement {
+  const normalizedVariant = variant === "explore" ? "compact" : variant;
+  const displayInstructor =
+    instructor ?? subtitle ?? description ?? "Giảng viên";
+  const displayCategoryLabel = categoryLabel ?? tag ?? "Tổng hợp";
+  const displayLearners = learnersLabel ?? learners ?? "0 học viên";
+  const displayPriceLabel =
+    priceLabel ??
+    (typeof price === "number"
+      ? `${price.toLocaleString("vi-VN")} đ`
+      : "Miễn phí");
+
+  if (normalizedVariant === "default") {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        className="mb-4 overflow-hidden rounded-lg bg-white shadow-sm"
+        activeOpacity={0.7}
+      >
+        <Image
+          source={{ uri: imageUrl }}
+          className="h-40 w-full bg-gray-200"
+          resizeMode="cover"
+        />
+        <View className="p-4">
+          <Text
+            className="mb-2 text-base font-semibold text-slate-900"
+            numberOfLines={2}
+          >
+            {title}
+          </Text>
+          <View className="flex-row items-center justify-between">
+            <Text className="text-lg font-bold text-blue-600">
+              {displayPriceLabel}
+            </Text>
+            <TouchableOpacity className="rounded-full bg-blue-100 px-3 py-1">
+              <Text className="text-xs font-semibold text-blue-600">
+                {buttonLabel}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  const isCompact = normalizedVariant === "compact";
+  const isGlass = normalizedVariant === "glass";
 
   return (
     <Pressable
       style={[
         styles.glassPanel,
-        isCompact ? styles.cardCompact : styles.cardLarge,
+        isGlass ? styles.cardGlass : styles.cardMedium,
+        isCompact ? styles.cardCompact : null,
       ]}
       className={isCompact ? "mb-4" : ""}
       onPress={onPress}
@@ -54,18 +125,18 @@ export default function CourseGlassCard({
           resizeMode="cover"
         />
         <Text style={styles.categoryBadge} numberOfLines={1}>
-          {categoryLabel}
+          {displayCategoryLabel}
         </Text>
       </View>
 
       <View style={isCompact ? styles.bodyCompact : styles.bodyLarge}>
         <View style={styles.ratingRow}>
           <Ionicons name="star" size={12} color="#f59e0b" />
-          <Text style={styles.ratingText}>{rating}</Text>
+          <Text style={styles.ratingText}>{rating ?? 0}</Text>
           <View style={styles.learnersRow}>
             <Ionicons name="people" size={12} color="#94a3b8" />
             <Text style={styles.learnersText} numberOfLines={1}>
-              {learnersLabel}
+              {displayLearners}
             </Text>
           </View>
         </View>
@@ -79,11 +150,11 @@ export default function CourseGlassCard({
 
         <View style={styles.footerRow}>
           <Text style={styles.instructorText} numberOfLines={1}>
-            {instructor}
+            {displayInstructor}
           </Text>
           {footerRight ?? (
             <Text style={isCompact ? styles.priceCompact : styles.priceLarge}>
-              {priceLabel}
+              {displayPriceLabel}
             </Text>
           )}
         </View>
@@ -99,18 +170,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.85)",
     backgroundColor: "rgba(255,255,255,0.1)",
+    marginBottom: 16,
   },
-  cardMedium: {
-    width: 240,
+  cardGlass: {
+    width: 280,
     padding: 10,
   },
-  cardLarge: {
-    width: 280,
+  cardMedium: {
+    width: "100%",
     padding: 10,
   },
   cardCompact: {
     flex: 1,
     padding: 8,
+    marginBottom: 0,
   },
   imageWrapLarge: {
     position: "relative",

@@ -1,4 +1,4 @@
-import type { MyLearningCoursesData } from "../types/myLearning";
+import type { MyLearningCoursesData } from "../../types/myLearning";
 
 export const mockMyLearningCourses: MyLearningCoursesData = {
   inProgress: [

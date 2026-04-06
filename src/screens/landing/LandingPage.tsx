@@ -18,7 +18,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { RootStackParamList } from "../../navigation/AppNavigator";
-import AppScreenBackground from "../../components/ui/AppScreenBackground";
+import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import Logo from "../../components/ui/Logo";
 import {
   fetchBestSellers,

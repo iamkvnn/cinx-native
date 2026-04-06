@@ -20,11 +20,11 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-import OrderHistoryCard from "../../components/profile/OrderHistoryCard";
+import OrderHistoryCard from "../../components/domain/profile/OrderHistoryCard";
 import OrderStatusFilter, {
   type OrderFilterTab,
-} from "../../components/profile/OrderStatusFilter";
-import AppScreenBackground from "../../components/ui/AppScreenBackground";
+} from "../../components/domain/profile/OrderStatusFilter";
+import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import {
   cancelOrder,

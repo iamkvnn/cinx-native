@@ -31,10 +31,10 @@ import {
 
 import CartItemCard, {
   type CartItemCardData,
-} from "../../components/ecommerce/CartItemCard";
-import AppScreenBackground from "../../components/ui/AppScreenBackground";
-import CartSummaryBar from "../../components/ecommerce/CartSummaryBar";
-import EmptyCartState from "../../components/ecommerce/EmptyCartState";
+} from "../../components/domain/ecommerce/CartItemCard";
+import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
+import CartSummaryBar from "../../components/domain/ecommerce/CartSummaryBar";
+import EmptyCartState from "../../components/domain/ecommerce/EmptyCartState";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import {
   fetchCart,

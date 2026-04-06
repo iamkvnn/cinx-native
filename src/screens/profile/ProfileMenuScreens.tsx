@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { ReactElement } from "react";
 import { Pressable, SafeAreaView, ScrollView, Text, View } from "react-native";
-import AppScreenBackground from "../../components/ui/AppScreenBackground";
+import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 
 type PlaceholderScreenProps = NativeStackScreenProps<

@@ -1,4 +1,4 @@
-import type { CalendarData, MyLearningData } from "../types/myLearning";
+import type { CalendarData, MyLearningData } from "../../types/myLearning";
 
 export const mockCalendarData: CalendarData = {
   month: 5, // May

@@ -18,11 +18,11 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-import OrderSummaryCard from "../../components/ecommerce/OrderSummaryCard";
+import OrderSummaryCard from "../../components/domain/ecommerce/OrderSummaryCard";
 import PaymentMethodSelector, {
   type PaymentMethod,
-} from "../../components/ecommerce/PaymentMethodSelector";
-import AppScreenBackground from "../../components/ui/AppScreenBackground";
+} from "../../components/domain/ecommerce/PaymentMethodSelector";
+import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { fetchCurrentUser } from "../../services/api/authApi";
 import {

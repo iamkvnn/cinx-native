@@ -3,7 +3,10 @@ import { BlurView } from "expo-blur";
 import { type ReactElement } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { OrderApi, OrderDetailItemApi } from "../../services/api/orderApi";
+import type {
+  OrderApi,
+  OrderDetailItemApi,
+} from "../../../services/api/orderApi";
 
 interface OrderHistoryCardProps {
   order: OrderApi;

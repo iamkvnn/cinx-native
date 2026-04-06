@@ -29,8 +29,8 @@ import {
   MenuItem,
   MenuSection,
   SettingToggleItem,
-} from "../../components/profile/ProfileMenuItems";
-import AppScreenBackground from "../../components/ui/AppScreenBackground";
+} from "../../components/domain/profile/ProfileMenuItems";
+import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type {
   MainTabParamList,
   RootStackParamList,
