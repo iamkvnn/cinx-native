@@ -1,4 +1,4 @@
-import type { DailyGoalsData } from "../types/myLearning";
+import type { DailyGoalsData } from "../../types/myLearning";
 
 export const mockDailyGoals: Record<number, DailyGoalsData> = {
   24: {

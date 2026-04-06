@@ -16,11 +16,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { RootStackParamList } from "../../navigation/AppNavigator";
-import AppScreenBackground from "../../components/ui/AppScreenBackground";
+import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import { register as registerApi, sendOtp } from "../../services/api/authApi";
 import { useAuthStore } from "../../store/useAuthStore";
-import CustomButton from "../../components/ui/CustomButton";
-import CustomInput from "../../components/ui/CustomInput";
+import CustomButton from "../../components/ui/buttons/CustomButton";
+import CustomInput from "../../components/ui/inputs/CustomInput";
 import Logo from "../../components/ui/Logo";
 
 type LoginScreenProps = NativeStackScreenProps<RootStackParamList, "Login">;

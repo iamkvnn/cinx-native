@@ -19,11 +19,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import ExploreCategoryList from "../../components/explore/ExploreCategoryList";
-import ExploreCourseCard from "../../components/explore/ExploreCourseCard";
+import CourseCard from "../../components/domain/course/CourseCard";
 import ExploreFilterButton from "../../components/explore/ExploreFilterButton";
-import AppScreenBackground from "../../components/ui/AppScreenBackground";
+import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import { fetchCart } from "../../services/api/cartApi";
-import ExploreSearchBar from "../../components/explore/ExploreSearchBar";
+import SearchBar from "../../components/ui/inputs/SearchBar";
 import {
   fetchCategories,
   fetchCourses,
@@ -333,10 +333,11 @@ export default function ExploreScreen(): ReactElement {
 
         <View className="px-6 py-3">
           <View className="relative z-10 flex-row items-center gap-3">
-            <ExploreSearchBar
+            <SearchBar
               value={searchKeyword}
               onChangeText={setSearchKeyword}
               onSubmitEditing={() => setDebouncedKeyword(searchKeyword.trim())}
+              placeholder="Tìm khóa học, tác giả..."
             />
 
             <ExploreFilterButton
@@ -539,8 +540,15 @@ export default function ExploreScreen(): ReactElement {
         data={flattenedCourses}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <ExploreCourseCard
-            item={item}
+          <CourseCard
+            variant="explore"
+            title={item.title}
+            instructor={item.subtitle}
+            rating={item.rating}
+            learnersLabel={item.learnersLabel}
+            priceLabel={item.priceLabel}
+            imageUrl={item.imageUrl}
+            categoryLabel={item.categoryLabel}
             onPress={() =>
               navigation.navigate("CourseDetail", {
                 courseId: item.id,

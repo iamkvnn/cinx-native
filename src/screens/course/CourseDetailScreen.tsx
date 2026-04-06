@@ -22,7 +22,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import CourseAboutTab from "../../components/course/CourseAboutTab";
 import CourseCurriculumTab from "../../components/course/CourseCurriculumTab";
 import CourseReviewsTab from "../../components/course/CourseReviewsTab";
-import AppScreenBackground from "../../components/ui/AppScreenBackground";
+import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import { fetchCart } from "../../services/api/cartApi";
 import {
   addCourseToCart,

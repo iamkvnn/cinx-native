@@ -1,18 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
 import { type ReactElement } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, TextInput, type TextInputProps, View } from "react-native";
 
-type ExploreSearchBarProps = {
+type SearchBarProps = Omit<TextInputProps, "value" | "onChangeText"> & {
   value: string;
   onChangeText: (text: string) => void;
-  onSubmitEditing: () => void;
+  onSubmitEditing?: TextInputProps["onSubmitEditing"];
+  placeholder?: string;
 };
 
-export default function ExploreSearchBar({
+export default function SearchBar({
   value,
   onChangeText,
   onSubmitEditing,
-}: ExploreSearchBarProps): ReactElement {
+  placeholder = "Search...",
+  returnKeyType = "search",
+  ...props
+}: SearchBarProps): ReactElement {
   return (
     <View
       style={styles.searchShell}
@@ -23,10 +27,11 @@ export default function ExploreSearchBar({
         value={value}
         onChangeText={onChangeText}
         onSubmitEditing={onSubmitEditing}
-        placeholder="Tìm khóa học, tác giả..."
+        placeholder={placeholder}
         placeholderTextColor="#94a3b8"
-        returnKeyType="search"
+        returnKeyType={returnKeyType}
         className="ml-2 flex-1 py-3.5 text-sm font-semibold text-slate-800"
+        {...props}
       />
     </View>
   );
