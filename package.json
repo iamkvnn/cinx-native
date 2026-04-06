@@ -6,7 +6,16 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "openapi:auth": "openapi --input https://api.shinyjewelry.shop/v3/api-docs/auth --output src/api/auth --client axios --useOptions --useUnionTypes",
+    "openapi:cart": "openapi --input https://api.shinyjewelry.shop/v3/api-docs/cart --output src/api/cart --client axios --useOptions --useUnionTypes",
+    "openapi:course": "openapi --input https://api.shinyjewelry.shop/v3/api-docs/course --output src/api/course --client axios --useOptions --useUnionTypes",
+    "openapi:enrollment": "openapi --input https://api.shinyjewelry.shop/v3/api-docs/enrollment --output src/api/enrollment --client axios --useOptions --useUnionTypes",
+    "openapi:learning": "openapi --input https://api.shinyjewelry.shop/v3/api-docs/learning --output src/api/learning --client axios --useOptions --useUnionTypes",
+    "openapi:notification": "openapi --input https://api.shinyjewelry.shop/v3/api-docs/notification --output src/api/notification --client axios --useOptions --useUnionTypes",
+    "openapi:social": "openapi --input https://api.shinyjewelry.shop/v3/api-docs/social --output src/api/social --client axios --useOptions --useUnionTypes",
+    "openapi:user": "openapi --input https://api.shinyjewelry.shop/v3/api-docs/user --output src/api/user --client axios --useOptions --useUnionTypes",
+    "openapi:all": "npm run openapi:auth && npm run openapi:cart && npm run openapi:course && npm run openapi:enrollment && npm run openapi:learning && npm run openapi:notification && npm run openapi:social && npm run openapi:user"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -37,6 +46,7 @@
   "devDependencies": {
     "@types/react": "~19.1.10",
     "babel-preset-expo": "^54.0.10",
+    "openapi-typescript-codegen": "^0.29.0",
     "tailwindcss": "^3.4.19",
     "typescript": "~5.9.2"
   },
