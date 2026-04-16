@@ -1,11 +1,13 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import { useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Image,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -26,7 +28,7 @@ import AppScreenBackground from "../../components/ui/layout/AppScreenBackground"
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { fetchCurrentUser } from "../../services/api/authApi";
 import {
-  cancelOrder,
+  checkPaymentPaid,
   confirmPayment,
   getOrderById,
   type OrderDetailItemApi,
@@ -90,13 +92,17 @@ export default function CheckoutScreen({
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("momo");
   const [isProcessing, setIsProcessing] = useState(false);
   const [useRewardPoints, setUseRewardPoints] = useState(false);
+  const [isWaitingPaymentResult, setIsWaitingPaymentResult] = useState(false);
+  const paidHandledRef = useRef(false);
 
-  const orderId = Number(route.params?.orderId ?? 0);
+  const orderId = String(route.params?.orderId ?? "").trim();
+  const isValidOrderId = orderId.length > 0;
 
   const orderQuery = useQuery({
     queryKey: ["order", "detail", orderId],
     queryFn: () => getOrderById(orderId),
-    enabled: Number.isFinite(orderId) && orderId > 0,
+    enabled: isValidOrderId,
+    refetchInterval: isWaitingPaymentResult ? 5000 : false,
   });
 
   const orderItems = useMemo<OrderDetailItemApi[]>(() => {
@@ -126,7 +132,7 @@ export default function CheckoutScreen({
     }, 0);
   }, [orderItems, orderQuery.data?.totalAmount, orderQuery.data?.total_amount]);
 
-  const orderCode = `EDUF-${String(orderId || 0).padStart(6, "0")}`;
+  const orderCode = `EDUF-${orderId.padStart(6, "0")}`;
   const isOrderPending = isPendingOrderStatus(orderQuery.data?.status);
   const rewardPoints = Number(user?.rewardPoints ?? 0);
   const maxDiscount = rewardPoints * 1000;
@@ -135,8 +141,88 @@ export default function CheckoutScreen({
     : 0;
   const finalPrice = Math.max(0, totalAmount - discountAmount);
 
+  const finalizePaidOrder = async (): Promise<void> => {
+    if (paidHandledRef.current) {
+      return;
+    }
+
+    paidHandledRef.current = true;
+    setIsWaitingPaymentResult(false);
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
+      queryClient.invalidateQueries({ queryKey: ["cart", "badge"] }),
+      queryClient.invalidateQueries({ queryKey: ["orders", "my-orders"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["order", "detail", orderId],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] }),
+    ]);
+
+    try {
+      const freshUser = await fetchCurrentUser();
+      useAuthStore.getState().setUser(freshUser);
+    } catch {
+      // Keep checkout flow successful even when profile refresh fails.
+    }
+
+    notify("Thanh toán thành công!");
+    navigation.replace("MainTabs", { screen: "MyLearning" });
+  };
+
+  useEffect(() => {
+    if (!isWaitingPaymentResult || !isValidOrderId) {
+      return;
+    }
+
+    const backendMethod = selectedMethod === "momo" ? "MOMO" : "VN_PAY";
+
+    const syncPaymentStatus = async (): Promise<void> => {
+      const paid = await checkPaymentPaid(orderId, backendMethod);
+
+      if (paid) {
+        await finalizePaidOrder();
+        return;
+      }
+
+      await orderQuery.refetch();
+    };
+
+    const intervalId = setInterval(() => {
+      void syncPaymentStatus();
+    }, 5000);
+
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void syncPaymentStatus();
+      }
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      subscription.remove();
+    };
+  }, [
+    finalizePaidOrder,
+    isValidOrderId,
+    isWaitingPaymentResult,
+    orderId,
+    orderQuery,
+    selectedMethod,
+  ]);
+
+  useEffect(() => {
+    if (!isWaitingPaymentResult || paidHandledRef.current) {
+      return;
+    }
+
+    if (!isOrderPending) {
+      void finalizePaidOrder();
+    }
+  }, [isWaitingPaymentResult, isOrderPending]);
+
   const handleConfirmPayment = async (): Promise<void> => {
-    if (!Number.isFinite(orderId) || orderId <= 0 || isProcessing) {
+    if (!isValidOrderId || isProcessing) {
       return;
     }
 
@@ -147,27 +233,37 @@ export default function CheckoutScreen({
 
     try {
       setIsProcessing(true);
-      await confirmPayment(orderId, { useRewardPoints });
+      const result = await confirmPayment(orderId, {
+        useRewardPoints,
+        paymentMethod: selectedMethod === "momo" ? "MOMO" : "VN_PAY",
+      });
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
-        queryClient.invalidateQueries({ queryKey: ["cart", "badge"] }),
-        queryClient.invalidateQueries({ queryKey: ["orders", "my-orders"] }),
-        queryClient.invalidateQueries({
+      if (!result.isPaid) {
+        setIsWaitingPaymentResult(true);
+
+        if (result.paymentUrl) {
+          const canOpen = await Linking.canOpenURL(result.paymentUrl);
+
+          if (canOpen) {
+            await Linking.openURL(result.paymentUrl);
+          }
+
+          notify(
+            "Đã tạo phiên thanh toán. Vui lòng hoàn tất thanh toán trên cổng thanh toán.",
+          );
+        } else {
+          notify(
+            "Đã gửi yêu cầu thanh toán. Vui lòng kiểm tra lại trạng thái đơn hàng.",
+          );
+        }
+
+        await queryClient.invalidateQueries({
           queryKey: ["order", "detail", orderId],
-        }),
-        queryClient.invalidateQueries({ queryKey: ["user-profile"] }),
-      ]);
-
-      try {
-        const freshUser = await fetchCurrentUser();
-        useAuthStore.getState().setUser(freshUser);
-      } catch {
-        // Keep checkout flow successful even when profile refresh fails.
+        });
+        return;
       }
 
-      notify("Thanh toán thành công!");
-      navigation.replace("MainTabs", { screen: "MyLearning" });
+      await finalizePaidOrder();
     } catch (error) {
       Alert.alert(
         "Thanh toán thất bại",
@@ -179,54 +275,21 @@ export default function CheckoutScreen({
   };
 
   const handleCancelOrder = (): void => {
-    if (!Number.isFinite(orderId) || orderId <= 0 || isProcessing) {
+    if (!isValidOrderId || isProcessing) {
       return;
     }
 
     Alert.alert(
-      "Hủy đơn hàng",
-      "Bạn chắc chắn muốn hủy đơn hàng này? Bạn có thể thanh toán lại sau.",
+      "Chưa hỗ trợ hủy đơn",
+      "Backend hiện chưa có endpoint hủy đơn hàng. Bạn có thể quay lại và tiếp tục thanh toán sau.",
       [
         {
-          text: "Không",
+          text: "Đóng",
           style: "cancel",
         },
         {
-          text: "Hủy đơn",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              try {
-                setIsProcessing(true);
-                await cancelOrder(orderId);
-
-                await Promise.all([
-                  queryClient.invalidateQueries({ queryKey: ["orders"] }),
-                  queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
-                  queryClient.invalidateQueries({ queryKey: ["cart"] }),
-                  queryClient.invalidateQueries({
-                    queryKey: ["cart", "badge"],
-                  }),
-                  queryClient.invalidateQueries({
-                    queryKey: ["orders", "my-orders"],
-                  }),
-                  queryClient.invalidateQueries({
-                    queryKey: ["order", "detail", orderId],
-                  }),
-                ]);
-
-                notify("Đã hủy đơn hàng.");
-                navigation.goBack();
-              } catch (error) {
-                Alert.alert(
-                  "Không thể hủy đơn",
-                  getApiErrorMessage(error, "Vui lòng thử lại sau."),
-                );
-              } finally {
-                setIsProcessing(false);
-              }
-            })();
-          },
+          text: "Quay lại",
+          onPress: () => navigation.goBack(),
         },
       ],
     );
@@ -241,7 +304,7 @@ export default function CheckoutScreen({
     );
   }
 
-  if (!Number.isFinite(orderId) || orderId <= 0) {
+  if (!isValidOrderId) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-transparent px-8">
         <AppScreenBackground />
@@ -308,13 +371,8 @@ export default function CheckoutScreen({
             {orderItems.map((item) => {
               const title = item.course?.title ?? "Khóa học";
               const image =
-                item.course?.thumbnailUrl ??
-                item.course?.thumbnail_url ??
-                FALLBACK_IMAGE;
-              const instructor =
-                item.course?.instructor?.fullName ??
-                item.course?.instructor?.profile?.fullName ??
-                "Giảng viên";
+                item.course?.images?.[0]?.imageUrl ?? FALLBACK_IMAGE;
+              const instructor = item.course?.instructor?.name ?? "Giảng viên";
               const itemPrice = Number(
                 item.finalPrice ??
                   item.final_price ??

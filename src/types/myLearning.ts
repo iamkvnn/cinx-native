@@ -1,59 +1,73 @@
-// MyLearning screen type definitions
-export interface StreakRange {
-  start: number;
-  end: number;
-}
+import type { DailyGoalResponse } from "@/types";
 
-export interface DailyGoal {
+export type DailyGoalType = "quiz" | "video" | "code" | "add" | "rest";
+
+export type DailyGoal = {
   id: string;
   text: string;
   done: boolean;
-  time: string; // "30m", "45m", "--", "+"
-  type: "quiz" | "video" | "code" | "add" | "rest";
-}
+  time: string;
+  type: DailyGoalType;
+};
 
-export interface MyLearningCourse {
-  id: string;
-  title: string;
-  progress: number; // 0-100
-  nextLesson: string;
-  imageUrl: string;
-  color: "violet" | "pink" | "indigo" | "emerald" | "amber";
-}
-
-export interface CompletedCourse {
-  id: string;
-  title: string;
-  grade: string; // "98/100"
-  completedDate: string; // "12/04/2026"
-  imageUrl: string;
-}
-
-export interface CalendarData {
-  month: number; // 1-12
-  year: number;
-  currentDay: number;
-  streakRanges: StreakRange[];
-  daysWithEvents: number[];
-}
-
-export interface DailyGoalsData {
+export type DailyGoalsData = {
   day: number;
   month: number;
   year: number;
   goals: DailyGoal[];
-}
+};
 
-export interface MyLearningCoursesData {
-  inProgress: MyLearningCourse[];
-  completed: CompletedCourse[];
-}
+export type StreakRange = {
+  start: number;
+  end: number;
+};
 
-export interface MyLearningData {
+export type CalendarData = {
+  month: number;
+  year: number;
+  currentDay: number;
+  streakRanges: StreakRange[];
+  daysWithEvents: number[];
+};
+
+export type MyLearningData = {
   calendar: CalendarData;
   streakStats: {
     currentStreak: number;
     totalXP: number;
   };
-  userAvatar: string;
-}
+  userAvatar?: string;
+};
+
+export type MonthlyGoalProgress = {
+  year: number;
+  month: number;
+  totalGoals: number;
+  completedGoals: number;
+  completionRate: number;
+  days: DailyGoalResponse[];
+};
+
+export type MyLearningCourse = {
+  id: string;
+  title: string;
+  nextLesson: string;
+  progress: number;
+  imageUrl: string;
+  color: "violet" | "pink" | "indigo" | "emerald" | "amber";
+};
+
+export type CompletedCourse = {
+  id: string;
+  title: string;
+  completedDate: string;
+  statusLabel?: string;
+  imageUrl: string;
+  certificateUrl?: string;
+  grade?: string;
+};
+
+export type MyLearningCoursesData = {
+  inProgress: MyLearningCourse[];
+  completed: CompletedCourse[];
+};

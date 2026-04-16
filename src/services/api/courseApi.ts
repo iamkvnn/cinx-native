@@ -1,144 +1,114 @@
-import type { AxiosResponse } from "axios";
+import type {
+  CourseDetailResponse,
+  ReviewResponse,
+  SectionResponse,
+  CreateReviewRequest,
+} from "@/types";
 
-import axiosClient from "./axiosClient";
+import { CourseControllerService } from "./CourseControllerService";
+import { CartControllerService } from "./CartControllerService";
+import { ReviewControllerService } from "./ReviewControllerService";
 
-type ApiEnvelope<T> = {
-  data: T;
-  message?: string;
-};
-
-export interface CourseLectureApi {
-  id: number;
+export type CourseLectureApi = {
+  id?: string;
   title?: string;
   videoUrl?: string;
-  contentText?: string;
-  orderIndex?: number;
-}
+  lessonType?: string;
+} & Record<string, any>;
 
-export interface CourseSectionApi {
-  id: number;
-  title?: string;
-  orderIndex?: number;
+export type CourseSectionApi = (SectionResponse & {
   lectures?: CourseLectureApi[];
-}
+}) &
+  Record<string, any>;
 
-export interface CourseReviewApi {
-  id: number;
-  rating?: number;
+export type CourseDetailApi = (CourseDetailResponse & {
+  sections?: CourseSectionApi[];
+}) &
+  Record<string, any>;
+
+export type CourseReviewApi = (ReviewResponse & {
   comment?: string;
   createdAt?: string;
-  userId?: string;
+  updatedAt?: string;
   user?: {
-    id?: number;
+    id?: string;
     fullName?: string;
     avatar?: string;
   };
-}
+}) &
+  Record<string, any>;
 
-export interface CourseReviewsResponseApi {
-  averageRating?: number;
-  totalReviews?: number;
-  reviews?: CourseReviewApi[];
-}
-
-export interface CourseDetailApi {
-  id: number;
-  title?: string;
-  description?: string;
-  thumbnailUrl?: string;
-  thumbnail_url?: string;
-  price?: number;
-  discountPercent?: number;
-  enrollmentCount?: number;
-  enrollment_count?: number;
-  category?: {
-    id?: number;
-    name?: string;
-  };
-  instructor?: {
-    id?: number;
-    fullName?: string;
-    profile?: {
-      fullName?: string;
-      avatar?: string;
-    };
-  };
-  tags?: Array<{
-    id?: number;
-    name?: string;
-  }>;
-  sections?: CourseSectionApi[];
-}
-
-const unwrapData = <T>(response: AxiosResponse<T | ApiEnvelope<T>>): T => {
-  const payload = response.data;
-
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in (payload as Record<string, unknown>)
-  ) {
-    return (payload as ApiEnvelope<T>).data;
-  }
-
-  return payload as T;
+const mapSections = (
+  sections: SectionResponse[] | undefined,
+): CourseSectionApi[] => {
+  return (sections ?? []).map((section) => ({
+    ...section,
+    lectures: (section.lessons ?? []).map((lesson) => ({
+      id: lesson.id,
+      title: lesson.title,
+      lessonType: lesson.lessonType,
+      videoUrl: undefined,
+    })),
+  }));
 };
 
 export const fetchCourseById = async (
-  courseId: number | string,
+  courseId: string | number,
 ): Promise<CourseDetailApi> => {
-  const response = await axiosClient.get<
-    CourseDetailApi | ApiEnvelope<CourseDetailApi>
-  >(`/courses/${courseId}`);
-
-  return unwrapData(response);
-};
-
-export const addCourseToCart = async (
-  courseId: number,
-): Promise<{ message?: string }> => {
-  const response = await axiosClient.post<
-    { message?: string } | ApiEnvelope<{ message?: string }>
-  >("/cart", {
-    courseId,
+  const response = await CourseControllerService.getCourseById({
+    id: String(courseId),
   });
 
-  return unwrapData(response);
-};
-
-export const fetchCourseReviews = async (
-  courseId: number | string,
-): Promise<CourseReviewsResponseApi> => {
-  const response = await axiosClient.get<
-    CourseReviewsResponseApi | ApiEnvelope<CourseReviewsResponseApi>
-  >(`/reviews/course/${courseId}`);
-
-  const payload = unwrapData(response);
-
   return {
-    averageRating: Number(payload?.averageRating ?? 0),
-    totalReviews: Number(
-      payload?.totalReviews ?? payload?.reviews?.length ?? 0,
+    ...(response.data ?? {}),
+    sections: mapSections(
+      (response.data as CourseDetailResponse | undefined)?.sections,
     ),
-    reviews: (payload?.reviews ?? []).map((review) => ({
-      ...review,
-      userId: String(review.user?.id ?? review.userId ?? ""),
-    })),
   };
 };
 
-export interface SubmitReviewPayload {
-  courseId: string;
+export const fetchCourseReviews = async (
+  courseId: string | number,
+): Promise<CourseReviewApi[]> => {
+  const response = await ReviewControllerService.getReviewsByCourseId({
+    courseId: String(courseId),
+  });
+
+  return (response.data ?? []).map((review) => ({
+    ...review,
+    comment: review.content ?? "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    user: {
+      id: review.userId,
+      fullName: "Học viên",
+      avatar: undefined,
+    },
+  }));
+};
+
+export const addCourseToCart = async (
+  courseId: string | number,
+): Promise<void> => {
+  await CartControllerService.addToCart({
+    requestBody: { courseId: String(courseId) },
+  });
+};
+
+export const submitReview = async ({
+  courseId,
+  rating,
+  comment,
+}: {
+  courseId: string | number;
   rating: number;
-  comment: string;
-}
-
-export const submitReview = async (
-  data: SubmitReviewPayload,
-): Promise<{ message?: string }> => {
-  const response = await axiosClient.post<
-    { message?: string } | ApiEnvelope<{ message?: string }>
-  >("/reviews", data);
-
-  return unwrapData(response);
+  comment?: string;
+}): Promise<void> => {
+  await ReviewControllerService.createReview({
+    requestBody: {
+      courseId: String(courseId),
+      rating,
+      content: comment,
+    } satisfies CreateReviewRequest,
+  });
 };

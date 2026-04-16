@@ -1,8 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactElement } from "react";
 import {
   ActivityIndicator,
@@ -26,11 +25,7 @@ import OrderStatusFilter, {
 } from "../../components/domain/profile/OrderStatusFilter";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
-import {
-  cancelOrder,
-  fetchMyOrders,
-  type OrderApi,
-} from "../../services/api/orderApi";
+import { fetchMyOrders, type OrderApi } from "../../services/api/orderApi";
 
 type PurchaseHistoryScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -46,36 +41,19 @@ const notify = (message: string): void => {
   Alert.alert("Thông báo", message);
 };
 
-const getApiErrorMessage = (error: unknown, fallback: string): string => {
-  if (axios.isAxiosError(error)) {
-    const message =
-      (error.response?.data as { message?: string } | undefined)?.message ??
-      (error.response?.data as { error?: string } | undefined)?.error;
-
-    return message ?? fallback;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return fallback;
-};
-
 const normalizeStatus = (status: string | undefined): string => {
   return String(status ?? "").toUpperCase();
 };
 
-const getFirstCourseId = (order: OrderApi): number | null => {
+const getFirstCourseId = (order: OrderApi): string | null => {
   const first = order.details?.[0] ?? order.orderItems?.[0];
-  const id = Number(first?.course?.id ?? 0);
-  return Number.isFinite(id) && id > 0 ? id : null;
+  const id = String(first?.course?.id ?? "");
+  return id.length > 0 ? id : null;
 };
 
 export default function PurchaseHistoryScreen({
   navigation,
 }: PurchaseHistoryScreenProps): ReactElement {
-  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<OrderFilterTab>("ALL");
 
@@ -85,7 +63,7 @@ export default function PurchaseHistoryScreen({
   });
 
   const cancelMutation = useMutation({
-    mutationFn: cancelOrder,
+    mutationFn: async () => Promise.resolve(),
   });
 
   const filteredOrders = useMemo<OrderApi[]>(() => {
@@ -114,42 +92,28 @@ export default function PurchaseHistoryScreen({
   }, [activeTab, ordersQuery.data]);
 
   const handleCancelOrder = (order: OrderApi): void => {
-    const orderId = Number(order.id ?? 0);
+    const orderId = String(order.id ?? "");
 
-    if (!Number.isFinite(orderId) || orderId <= 0 || cancelMutation.isPending) {
+    if (!orderId || cancelMutation.isPending) {
       return;
     }
 
-    Alert.alert("Hủy đơn hàng", "Bạn chắc chắn muốn hủy đơn hàng này?", [
-      {
-        text: "Không",
-        style: "cancel",
-      },
-      {
-        text: "Hủy đơn",
-        style: "destructive",
-        onPress: () => {
-          void (async () => {
-            try {
-              await cancelMutation.mutateAsync(orderId);
-
-              await Promise.all([
-                queryClient.invalidateQueries({
-                  queryKey: ["orders", "my-orders"],
-                }),
-                queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
-                queryClient.invalidateQueries({ queryKey: ["cart", "badge"] }),
-              ]);
-            } catch (error) {
-              Alert.alert(
-                "Không thể hủy đơn",
-                getApiErrorMessage(error, "Vui lòng thử lại sau."),
-              );
-            }
-          })();
+    Alert.alert(
+      "Chưa hỗ trợ hủy đơn",
+      "Backend hiện chưa có endpoint hủy đơn hàng.",
+      [
+        {
+          text: "Đóng",
+          style: "cancel",
         },
-      },
-    ]);
+        {
+          text: "Thanh toán đơn",
+          onPress: () => {
+            navigation.navigate("Checkout", { orderId });
+          },
+        },
+      ],
+    );
   };
 
   const handleReview = (): void => {
@@ -161,14 +125,14 @@ export default function PurchaseHistoryScreen({
   };
 
   const handlePayNow = (order: OrderApi): void => {
-    const orderId = Number(order.id ?? 0);
+    const orderId = String(order.id ?? "");
 
-    if (!Number.isFinite(orderId) || orderId <= 0) {
+    if (!orderId) {
       notify("Không tìm thấy mã đơn hàng hợp lệ.");
       return;
     }
 
-    navigation.navigate("Checkout", { orderId: String(orderId) });
+    navigation.navigate("Checkout", { orderId });
   };
 
   const handleRepurchase = (order: OrderApi): void => {
@@ -179,7 +143,7 @@ export default function PurchaseHistoryScreen({
       return;
     }
 
-    navigation.navigate("CourseDetail", { courseId: String(courseId) });
+    navigation.navigate("CourseDetail", { courseId });
   };
 
   if (ordersQuery.isLoading) {
@@ -231,12 +195,8 @@ export default function PurchaseHistoryScreen({
           >
             <Ionicons name="chevron-back" size={22} color="#334155" />
           </Pressable>
-          <Text className="text-base font-bold text-slate-800">
-            Lịch sử đơn hàng
-          </Text>
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100/80">
-            <Ionicons name="search" size={18} color="#64748b" />
-          </Pressable>
+          <View className="h-10 w-10" />
+          <View className="h-10 w-10" />
         </View>
 
         <OrderStatusFilter activeTab={activeTab} onTabSelect={setActiveTab} />

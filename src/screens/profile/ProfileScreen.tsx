@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
+import * as ImagePicker from "expo-image-picker";
 import { useNavigation } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
@@ -11,6 +12,7 @@ import {
   Easing,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -35,16 +37,16 @@ import type {
   MainTabParamList,
   RootStackParamList,
 } from "../../navigation/AppNavigator";
-import { fetchCurrentUser } from "../../services/api/authApi";
 import {
+  fetchCurrentUser,
   sendUpdateOtp,
   updateProfile,
   updateSensitiveInfo,
-} from "../../services/api/userApi";
+} from "../../services/api/authApi";
 import { useAuthStore } from "../../store/useAuthStore";
 
 type ProfileScreenProps = BottomTabNavigationProp<MainTabParamList, "Profile">;
-type ModalType = "edit-profile" | "sensitive" | null;
+type ModalType = "edit-profile" | "edit-avatar" | "sensitive" | null;
 type SensitiveKind = "email" | "phone" | "password";
 
 const FALLBACK_AVATAR = "https://i.pravatar.cc/200?img=12";
@@ -110,8 +112,11 @@ export default function ProfileScreen(): ReactElement {
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   const [fullNameInput, setFullNameInput] = useState("");
-  const [avatarInput, setAvatarInput] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const [avatarInput, setAvatarInput] = useState("");
+  const [pickedAvatarUri, setPickedAvatarUri] = useState("");
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
 
   const [sensitiveKind, setSensitiveKind] = useState<SensitiveKind>("email");
   const [sensitiveValue, setSensitiveValue] = useState("");
@@ -168,23 +173,6 @@ export default function ProfileScreen(): ReactElement {
       FALLBACK_AVATAR
     );
   }, [profileRecord.avatar, userRecord.avatar]);
-
-  const rewardPoints = useMemo(() => {
-    const rawValue =
-      userRecord.rewardPoints ??
-      userRecord.reward_points ??
-      profileRecord.rewardPoints ??
-      profileRecord.reward_points ??
-      0;
-
-    const numeric = Number(rawValue);
-    return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : 0;
-  }, [
-    profileRecord.reward_points,
-    profileRecord.rewardPoints,
-    userRecord.reward_points,
-    userRecord.rewardPoints,
-  ]);
 
   const navigateRoot = (screen: keyof RootStackParamList): void => {
     const rootNavigation = navigation.getParent() as
@@ -279,7 +267,13 @@ export default function ProfileScreen(): ReactElement {
     }
 
     const delay =
-      activeModal === "edit-profile" ? 360 : sensitiveStep === 2 ? 220 : 360;
+      activeModal === "edit-profile"
+        ? 360
+        : activeModal === "edit-avatar"
+          ? 360
+          : sensitiveStep === 2
+            ? 220
+            : 360;
 
     focusTimeoutRef.current = setTimeout(() => {
       if (activeModal === "edit-profile") {
@@ -303,7 +297,12 @@ export default function ProfileScreen(): ReactElement {
   }, [activeModal, sensitiveStep, shouldRenderModal]);
 
   const closeModal = (): void => {
-    if (isSavingProfile || isSendingSensitiveOtp || isSavingSensitiveInfo) {
+    if (
+      isSavingProfile ||
+      isSavingAvatar ||
+      isSendingSensitiveOtp ||
+      isSavingSensitiveInfo
+    ) {
       return;
     }
 
@@ -312,8 +311,13 @@ export default function ProfileScreen(): ReactElement {
 
   const openEditProfileModal = (): void => {
     setFullNameInput(profileName);
-    setAvatarInput(profileAvatar === FALLBACK_AVATAR ? "" : profileAvatar);
     setActiveModal("edit-profile");
+  };
+
+  const openEditAvatarModal = (): void => {
+    setAvatarInput(profileAvatar === FALLBACK_AVATAR ? "" : profileAvatar);
+    setPickedAvatarUri("");
+    setActiveModal("edit-avatar");
   };
 
   const openSensitiveModal = (kind: SensitiveKind): void => {
@@ -368,7 +372,6 @@ export default function ProfileScreen(): ReactElement {
 
     const payload = {
       fullName: fullNameInput.trim(),
-      avatar: avatarInput.trim(),
     };
 
     if (!payload.fullName) {
@@ -390,6 +393,77 @@ export default function ProfileScreen(): ReactElement {
       );
     } finally {
       setIsSavingProfile(false);
+    }
+  };
+
+  const handleSaveAvatar = async (): Promise<void> => {
+    if (isSavingAvatar) {
+      return;
+    }
+
+    const normalizedCurrentAvatar =
+      profileAvatar === FALLBACK_AVATAR ? "" : profileAvatar.trim();
+    const manualAvatarInput = avatarInput.trim();
+    const selectedAvatarUri = pickedAvatarUri.trim();
+    const shouldSendManualAvatar =
+      manualAvatarInput.length > 0 &&
+      manualAvatarInput !== normalizedCurrentAvatar;
+
+    const avatarUri =
+      selectedAvatarUri || (shouldSendManualAvatar ? manualAvatarInput : "");
+
+    if (!avatarUri) {
+      notify("Vui lòng chọn ảnh hoặc nhập URL avatar.");
+      return;
+    }
+
+    const payload = {
+      avatarUri,
+    };
+
+    try {
+      setIsSavingAvatar(true);
+      const updatedUser = await updateProfile(payload);
+
+      updateUserInStore(updatedUser as Record<string, unknown>);
+      notify("Cập nhật ảnh đại diện thành công.");
+      setActiveModal(null);
+    } catch (error) {
+      Alert.alert(
+        "Không thể cập nhật",
+        getApiErrorMessage(error, "Vui lòng thử lại sau."),
+      );
+    } finally {
+      setIsSavingAvatar(false);
+    }
+  };
+
+  const handlePickAvatar = async (): Promise<void> => {
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        notify("Cần quyền truy cập thư viện ảnh để chọn avatar.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.85,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      setPickedAvatarUri(result.assets[0]?.uri ?? "");
+    } catch (error) {
+      Alert.alert(
+        "Không thể chọn ảnh",
+        getApiErrorMessage(error, "Vui lòng thử lại sau."),
+      );
     }
   };
 
@@ -543,9 +617,6 @@ export default function ProfileScreen(): ReactElement {
       >
         <View className="mb-6 flex-row items-center justify-between px-6 py-2">
           <Text className="text-lg font-bold text-slate-800">Tài khoản</Text>
-          <Pressable className="h-10 w-10 items-center justify-center rounded-full bg-slate-100">
-            <Ionicons name="settings" size={20} color="#64748b" />
-          </Pressable>
         </View>
 
         <View
@@ -563,6 +634,12 @@ export default function ProfileScreen(): ReactElement {
               source={{ uri: profileAvatar }}
               className="h-20 w-20 rounded-full "
             />
+            <Pressable
+              onPress={openEditAvatarModal}
+              className="absolute bottom-0 right-0 h-6 w-6 items-center justify-center rounded-full bg-violet-600"
+            >
+              <Ionicons name="pencil" size={14} color="#ffffff" />
+            </Pressable>
           </View>
 
           <Text className="text-xl font-black tracking-tight text-slate-800">
@@ -571,45 +648,6 @@ export default function ProfileScreen(): ReactElement {
           <Text className="mt-1 text-sm font-medium text-slate-500">
             {profileEmail}
           </Text>
-          <Text className="mb-3 mt-1 text-sm font-medium text-slate-500">
-            {profilePhone}
-          </Text>
-
-          <Pressable
-            onPress={openEditProfileModal}
-            className="mb-4 w-full flex-row items-center justify-center gap-2 rounded-xl bg-slate-100/10 shadow-sm py-2.5"
-          >
-            <Text className="text-sm font-bold text-slate-700">
-              Chỉnh sửa hồ sơ
-            </Text>
-          </Pressable>
-
-          <View className="w-full border-t border-slate-200/60 pt-4">
-            <View className="flex-row items-center justify-around">
-              <View className="items-center">
-                <Text className="text-xl font-black">21</Text>
-                <Text className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Ngày học
-                </Text>
-              </View>
-              <View className="h-8 w-px bg-slate-200/60" />
-              <View className="items-center">
-                <Text className="text-xl font-black">3</Text>
-                <Text className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Chứng chỉ
-                </Text>
-              </View>
-              <View className="h-8 w-px bg-slate-200/60" />
-              <View className="items-center">
-                <Text className="text-xl font-black text-yellow-400">
-                  {rewardPoints.toLocaleString("vi-VN")}
-                </Text>
-                <Text className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  RewardPoint
-                </Text>
-              </View>
-            </View>
-          </View>
         </View>
 
         <MenuSection title="Học tập & Thành tích">
@@ -620,16 +658,16 @@ export default function ProfileScreen(): ReactElement {
             onPress={() => navigateRoot("MyCertificates")}
             showLeadingIcon={false}
           />
-          <MenuItem
-            icon="cloud-download"
-            title="Tài liệu đã tải"
-            color="blue"
-            showLeadingIcon={false}
-            onPress={() => navigateRoot("DownloadedFiles")}
-          />
         </MenuSection>
 
         <MenuSection title="Giao dịch">
+          <MenuItem
+            icon="notifications"
+            title="Hộp thư thông báo"
+            color="red"
+            showLeadingIcon={false}
+            onPress={() => navigateRoot("Notifications")}
+          />
           <MenuItem
             icon="receipt"
             title="Lịch sử đơn hàng"
@@ -644,19 +682,12 @@ export default function ProfileScreen(): ReactElement {
             showLeadingIcon={false}
             onPress={() => navigateRoot("Vouchers")}
           />
-          <MenuItem
-            icon="card"
-            title="Phương thức thanh toán"
-            color="emerald"
-            showLeadingIcon={false}
-            onPress={() => navigateRoot("PaymentMethods")}
-          />
         </MenuSection>
 
         <MenuSection title="Cài đặt ứng dụng">
           <MenuItem
             icon="person"
-            title="Đổi thông tin"
+            title="Đổi tên"
             color="indigo"
             showLeadingIcon={false}
             onPress={openEditProfileModal}
@@ -698,13 +729,7 @@ export default function ProfileScreen(): ReactElement {
           />
         </MenuSection>
 
-        <MenuSection title="Hỗ trợ">
-          <MenuItem
-            icon="help-circle"
-            title="Trung tâm trợ giúp"
-            color="indigo"
-            onPress={() => navigateRoot("HelpCenter")}
-          />
+        <MenuSection title="Khác">
           <Pressable
             onPress={() => {
               void handleLogout();
@@ -721,7 +746,12 @@ export default function ProfileScreen(): ReactElement {
         </MenuSection>
       </ScrollView>
 
-      {shouldRenderModal ? (
+      <Modal
+        transparent
+        visible={shouldRenderModal}
+        animationType="none"
+        statusBarTranslucent
+      >
         <Animated.View
           style={[styles.modalOverlay, { opacity: backdropOpacity }]}
         >
@@ -755,10 +785,12 @@ export default function ProfileScreen(): ReactElement {
                 <View className="mb-5 flex-row items-center justify-between">
                   <Text className="text-lg font-black text-slate-800">
                     {activeModal === "edit-profile"
-                      ? "Đổi thông tin"
-                      : sensitiveKind === "password"
-                        ? "Đổi mật khẩu"
-                        : `Đổi ${sensitiveKind === "email" ? "email" : "số điện thoại"}`}
+                      ? "Đổi tên"
+                      : activeModal === "edit-avatar"
+                        ? "Đổi ảnh đại diện"
+                        : sensitiveKind === "password"
+                          ? "Đổi mật khẩu"
+                          : `Đổi ${sensitiveKind === "email" ? "email" : "số điện thoại"}`}
                   </Text>
                   <Pressable
                     onPress={closeModal}
@@ -783,19 +815,6 @@ export default function ProfileScreen(): ReactElement {
                       />
                     </View>
 
-                    <View className="mb-4 rounded-2xl border border-white/80 bg-white/65 px-4 py-3">
-                      <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                        Avatar URL
-                      </Text>
-                      <TextInput
-                        value={avatarInput}
-                        onChangeText={setAvatarInput}
-                        placeholder="https://..."
-                        className="mt-1 text-sm font-semibold text-slate-800"
-                        autoCapitalize="none"
-                      />
-                    </View>
-
                     <Pressable
                       onPress={() => {
                         void handleSaveProfile();
@@ -808,6 +827,66 @@ export default function ProfileScreen(): ReactElement {
                       ) : (
                         <Text className="text-sm font-bold text-white">
                           Lưu thay đổi
+                        </Text>
+                      )}
+                    </Pressable>
+                  </>
+                ) : null}
+
+                {activeModal === "edit-avatar" ? (
+                  <>
+                    <View className="mb-3 rounded-2xl border border-white/80 bg-white/65 px-4 py-3 gap-3">
+                      <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        Ảnh đại diện
+                      </Text>
+
+                      <View className="flex-row items-center gap-3">
+                        <Image
+                          source={{
+                            uri:
+                              pickedAvatarUri ||
+                              avatarInput ||
+                              profileAvatar ||
+                              FALLBACK_AVATAR,
+                          }}
+                          className="h-14 w-14 rounded-full"
+                        />
+                        <Pressable
+                          onPress={() => {
+                            void handlePickAvatar();
+                          }}
+                          className="flex-1 h-11 items-center justify-center rounded-2xl bg-slate-900"
+                        >
+                          <Text className="text-sm font-bold text-white">
+                            Chọn ảnh
+                          </Text>
+                        </Pressable>
+                      </View>
+
+                      {pickedAvatarUri ? (
+                        <Pressable
+                          onPress={() => setPickedAvatarUri("")}
+                          className="self-start rounded-xl bg-red-50 px-3 py-2"
+                        >
+                          <Text className="text-xs font-bold text-red-600">
+                            Bỏ ảnh đã chọn
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+
+                    <Pressable
+                      onPress={() => {
+                        void handleSaveAvatar();
+                      }}
+                      disabled={isSavingAvatar}
+                      className="h-12 items-center justify-center rounded-2xl bg-violet-600"
+                    >
+                      {isSavingAvatar ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <Text className="text-sm font-bold text-white">
+                          Lưu ảnh
                         </Text>
                       )}
                     </Pressable>
@@ -940,7 +1019,7 @@ export default function ProfileScreen(): ReactElement {
             </Animated.View>
           </KeyboardAvoidingView>
         </Animated.View>
-      ) : null}
+      </Modal>
     </SafeAreaView>
   );
 }

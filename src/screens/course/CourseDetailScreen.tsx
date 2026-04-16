@@ -18,21 +18,27 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import type {
+  CartItemResponse,
+  CourseDetailResponse,
+  LessonResponse,
+  OrderDetailResponse,
+  ReviewResponse,
+} from "@/types";
 
 import CourseAboutTab from "../../components/course/CourseAboutTab";
 import CourseCurriculumTab from "../../components/course/CourseCurriculumTab";
 import CourseReviewsTab from "../../components/course/CourseReviewsTab";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
-import { fetchCart } from "../../services/api/cartApi";
-import {
-  addCourseToCart,
-  fetchCourseById,
-  fetchCourseReviews,
-  type CourseDetailApi,
-} from "../../services/api/courseApi";
-import { fetchMyCourses } from "../../services/api/myLearningApi";
-import { checkoutOrder, fetchMyOrders } from "../../services/api/orderApi";
+import { CartControllerService } from "../../services/api/CartControllerService";
+import { CourseControllerService } from "../../services/api/CourseControllerService";
+import { EnrollmentControllerService } from "../../services/api/EnrollmentControllerService";
+import { OrderControllerService } from "../../services/api/OrderControllerService";
+import { checkoutOrder } from "../../services/api/orderApi";
+import { ReviewControllerService } from "../../services/api/ReviewControllerService";
+import { LearningProgressControllerService } from "../../services/api/LearningProgressControllerService";
 import { useAuthStore } from "../../store/useAuthStore";
+import { extractCompletedLessonIds } from "../../utils/lessonFlow";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 
 type CourseDetailScreenProps = NativeStackScreenProps<
@@ -44,6 +50,107 @@ type CourseTab = "about" | "curriculum" | "reviews";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1586717791821-3f44a5638d48?w=800&q=80";
+
+type PurchasedCourse = {
+  courseId: string;
+  progressPercentage: number;
+};
+
+const mapOrderStatus = (order: OrderDetailResponse): string => {
+  const paymentStatus = String(order.payment?.status ?? "").toUpperCase();
+
+  if (paymentStatus === "PAID") {
+    return "COMPLETED";
+  }
+
+  if (paymentStatus === "REFUNDED") {
+    return "CANCELLED";
+  }
+
+  return "PENDING";
+};
+
+const fetchCourseById = async (
+  courseId: string | number,
+): Promise<CourseDetailResponse> => {
+  const response = await CourseControllerService.getCourseById({
+    id: String(courseId),
+  });
+
+  if (!response.data) {
+    throw new Error("Không tìm thấy khóa học.");
+  }
+
+  return response.data;
+};
+
+const fetchCourseReviews = async (
+  courseId: string | number,
+): Promise<Array<ReviewResponse & { createdAt?: string }>> => {
+  const response = await ReviewControllerService.getReviewsByCourseId({
+    courseId: String(courseId),
+  });
+
+  return (response.data ?? []).map((review) => ({
+    ...review,
+    createdAt: new Date().toISOString(),
+  }));
+};
+
+const fetchPurchasedCourses = async (): Promise<PurchasedCourse[]> => {
+  const enrolledResponse = await EnrollmentControllerService.getEnrolledCourses(
+    {
+      page: 1,
+      size: 100,
+    },
+  );
+  const courses = enrolledResponse.data ?? [];
+
+  if (courses.length === 0) {
+    return [];
+  }
+
+  const progressResponse =
+    await LearningProgressControllerService.getCourseProgressByCourseIds({
+      courseIds: courses
+        .map((course) => String(course.id ?? ""))
+        .filter(Boolean),
+    });
+
+  const progressMap = new Map<string, number>(
+    (progressResponse.data ?? []).map((progress) => {
+      const completedItems = Number(progress.completedItems ?? 0);
+      const totalItems = Number(progress.totalItems ?? 0);
+      const progressPercentage =
+        totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+
+      return [String(progress.courseId ?? ""), progressPercentage];
+    }),
+  );
+
+  return courses.map((course) => {
+    const mappedCourseId = String(course.id ?? "");
+
+    return {
+      courseId: mappedCourseId,
+      progressPercentage: progressMap.get(mappedCourseId) ?? 0,
+    };
+  });
+};
+
+const fetchMyOrders = async (): Promise<OrderDetailResponse[]> => {
+  const response = await OrderControllerService.getOrders({
+    page: 1,
+    size: 50,
+  });
+
+  return response.data ?? [];
+};
+
+const fetchCart = async (): Promise<CartItemResponse[]> => {
+  const response = await CartControllerService.getCart();
+  return response.data ?? [];
+};
 
 const getApiErrorMessage = (error: unknown, fallback: string): string => {
   if (axios.isAxiosError(error)) {
@@ -86,6 +193,26 @@ const formatPriceK = (value: number | undefined): string => {
   return `${Number(thousands.toFixed(1)).toLocaleString("vi-VN")}k`;
 };
 
+const readCategoryLabel = (category: unknown): string => {
+  if (typeof category === "string" && category.trim().length > 0) {
+    return category;
+  }
+
+  if (
+    category &&
+    typeof category === "object" &&
+    "name" in category &&
+    typeof (category as { name?: unknown }).name === "string"
+  ) {
+    const name = String((category as { name?: string }).name ?? "").trim();
+    if (name.length > 0) {
+      return name;
+    }
+  }
+
+  return "Design";
+};
+
 export default function CourseDetailScreen({
   route,
   navigation,
@@ -99,24 +226,35 @@ export default function CourseDetailScreen({
   const [isBuyingNow, setIsBuyingNow] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  const courseId = Number(route.params?.courseId ?? 0);
+  const courseId = String(route.params?.courseId ?? "").trim();
+  const hasValidCourseId = courseId.length > 0;
 
   const courseQuery = useQuery({
     queryKey: ["course-detail", courseId],
     queryFn: () => fetchCourseById(courseId),
-    enabled: Number.isFinite(courseId) && courseId > 0,
+    enabled: hasValidCourseId,
   });
 
   const reviewsQuery = useQuery({
     queryKey: ["course-detail", "reviews", courseId],
     queryFn: () => fetchCourseReviews(courseId),
-    enabled: Number.isFinite(courseId) && courseId > 0,
+    enabled: hasValidCourseId,
   });
 
   const purchasedCoursesQuery = useQuery({
     queryKey: ["course-detail", "purchased-courses", user?.id],
-    queryFn: fetchMyCourses,
+    queryFn: fetchPurchasedCourses,
     enabled: Boolean(user),
+  });
+
+  const itemProgressQuery = useQuery({
+    queryKey: ["course-detail", "item-progress", courseId],
+    queryFn: () =>
+      LearningProgressControllerService.getLearningItemProgressByCourseId({
+        courseId,
+      }),
+    enabled: hasValidCourseId && Boolean(user),
+    retry: false,
   });
 
   const ordersQuery = useQuery({
@@ -135,6 +273,9 @@ export default function CourseDetailScreen({
 
   const course = courseQuery.data;
   const courseTitle = course?.title ?? "Chi tiết khóa học";
+  const completedLessonIds = useMemo(() => {
+    return extractCompletedLessonIds(itemProgressQuery.data?.data);
+  }, [itemProgressQuery.data?.data]);
 
   const tabIndex = useMemo(() => {
     if (activeTab === "about") return 0;
@@ -142,30 +283,21 @@ export default function CourseDetailScreen({
     return 2;
   }, [activeTab]);
 
-  const imageUrl =
-    course?.thumbnailUrl ?? course?.thumbnail_url ?? FALLBACK_IMAGE;
+  const imageUrl = course?.images?.[0]?.imageUrl ?? FALLBACK_IMAGE;
 
-  const instructorName =
-    course?.instructor?.profile?.fullName ??
-    course?.instructor?.fullName ??
-    "Giảng viên";
+  const instructorName = course?.instructor?.name ?? "Giảng viên";
 
   const ratingLabel = "4.9";
   const ratingCountLabel = "12.5k đánh giá";
   const learnersLabel = `${
-    Number(
-      course?.enrollmentCount ?? course?.enrollment_count ?? 0,
-    ).toLocaleString("vi-VN") || "0"
+    Number(course?.enrollmentCount ?? 0).toLocaleString("vi-VN") || "0"
   } học viên`;
 
   const salePrice = formatPriceK(course?.price);
+  const categoryLabel = readCategoryLabel(course?.category);
   const oldPrice =
-    course?.discountPercent && course.discountPercent > 0 && course.price
-      ? formatPriceK(
-          Math.round(
-            course.price / (1 - Math.min(90, course.discountPercent) / 100),
-          ),
-        )
+    Number(course?.discountedPrice ?? 0) > 0
+      ? formatPriceK(course?.price)
       : null;
 
   const isPurchased = useMemo(() => {
@@ -176,8 +308,7 @@ export default function CourseDetailScreen({
     const purchased = purchasedCoursesQuery.data ?? [];
 
     return purchased.some((item) => {
-      const purchasedId = Number(item.course?.id ?? item.courseId);
-      return purchasedId === courseId;
+      return String(item.courseId) === courseId;
     });
   }, [courseId, purchasedCoursesQuery.data, user]);
 
@@ -188,27 +319,51 @@ export default function CourseDetailScreen({
 
     const purchased = purchasedCoursesQuery.data ?? [];
     const target = purchased.find((item) => {
-      const purchasedId = Number(item.course?.id ?? item.courseId);
-      return purchasedId === courseId;
+      return String(item.courseId) === courseId;
     });
 
     return Math.max(0, Math.min(100, Number(target?.progressPercentage ?? 0)));
   }, [courseId, isPurchased, purchasedCoursesQuery.data]);
 
   const isInCart = useMemo(() => {
-    const cartItems = cartQuery.data?.items ?? [];
+    const source = cartQuery.data;
+    let cartItems: CartItemResponse[] = [];
+
+    if (Array.isArray(source)) {
+      cartItems = source;
+    } else if (
+      source &&
+      typeof source === "object" &&
+      "items" in source &&
+      Array.isArray((source as { items?: unknown }).items)
+    ) {
+      cartItems = (
+        (source as { items?: CartItemResponse[] }).items ?? []
+      ).filter(Boolean);
+    }
 
     return cartItems.some((item) => {
-      const itemCourseId = Number(item.course?.id ?? 0);
+      const itemCourseId = String(item.course?.id ?? "");
       return itemCourseId === courseId;
     });
-  }, [cartQuery.data?.items, courseId]);
+  }, [cartQuery.data, courseId]);
 
-  const sections = course?.sections ?? [];
+  const sections = useMemo(() => {
+    const source = course?.sections ?? [];
+
+    return [...source]
+      .sort((a, b) => Number(a.orderIndex ?? 0) - Number(b.orderIndex ?? 0))
+      .map((section) => ({
+        ...section,
+        lessons: [...(section.lessons ?? [])].sort(
+          (a, b) => Number(a.orderIndex ?? 0) - Number(b.orderIndex ?? 0),
+        ),
+      }));
+  }, [course?.sections]);
 
   const pendingOrder = useMemo(() => {
     return (ordersQuery.data ?? []).find(
-      (order) => String(order.status ?? "").toUpperCase() === "PENDING",
+      (order) => mapOrderStatus(order) === "PENDING",
     );
   }, [ordersQuery.data]);
 
@@ -232,7 +387,7 @@ export default function CourseDetailScreen({
       return;
     }
 
-    if (!courseId || Number.isNaN(courseId)) {
+    if (!hasValidCourseId) {
       showToast("Không tìm thấy khóa học hợp lệ.");
       return;
     }
@@ -244,7 +399,9 @@ export default function CourseDetailScreen({
 
     try {
       setIsAddingToCart(true);
-      await addCourseToCart(courseId);
+      await CartControllerService.addToCart({
+        requestBody: { courseId: String(courseId) },
+      });
       await queryClient.invalidateQueries({ queryKey: ["cart"] });
       showToast("Đã thêm khóa học vào giỏ hàng.");
     } catch (error) {
@@ -260,7 +417,7 @@ export default function CourseDetailScreen({
       return;
     }
 
-    if (!courseId || Number.isNaN(courseId)) {
+    if (!hasValidCourseId) {
       showToast("Không tìm thấy khóa học hợp lệ.");
       return;
     }
@@ -274,11 +431,13 @@ export default function CourseDetailScreen({
 
       const ordersResult = await ordersQuery.refetch();
       const pendingFromRefetch = (ordersResult.data ?? []).find(
-        (order) => String(order.status ?? "").toUpperCase() === "PENDING",
+        (order) => mapOrderStatus(order) === "PENDING",
       );
-      const pendingId = Number(pendingFromRefetch?.id ?? pendingOrder?.id ?? 0);
+      const pendingId = String(
+        pendingFromRefetch?.id ?? pendingOrder?.id ?? "",
+      );
 
-      if (Number.isFinite(pendingId) && pendingId > 0) {
+      if (pendingId) {
         Alert.alert(
           "Bạn có đơn hàng chưa hoàn tất",
           "Bạn cần xử lý đơn hàng đang chờ trước khi mua khóa học mới. Bạn muốn đến trang thanh toán hay vào Giỏ hàng?",
@@ -286,7 +445,7 @@ export default function CourseDetailScreen({
             {
               text: "Thanh toán đơn cũ",
               onPress: () => {
-                navigation.navigate("Checkout", { orderId: String(pendingId) });
+                navigation.navigate("Checkout", { orderId: pendingId });
               },
             },
             {
@@ -304,10 +463,19 @@ export default function CourseDetailScreen({
         return;
       }
 
-      const response = await checkoutOrder({ courseId });
-      const orderId = Number(response?.id ?? 0);
+      if (!course?.id) {
+        showToast("Không lấy được thông tin khóa học.");
+        return;
+      }
 
-      if (!Number.isFinite(orderId) || orderId <= 0) {
+      const response = await checkoutOrder({
+        courseId: String(course.id),
+        paymentMethod: "MOMO",
+      });
+
+      const orderId = String(response.id ?? "");
+
+      if (!orderId) {
         showToast("Không lấy được thông tin đơn hàng.");
         return;
       }
@@ -321,7 +489,7 @@ export default function CourseDetailScreen({
         queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
       ]);
 
-      navigation.navigate("Checkout", { orderId: String(orderId) });
+      navigation.navigate("Checkout", { orderId });
     } catch (error) {
       showToast(
         getApiErrorMessage(
@@ -336,6 +504,62 @@ export default function CourseDetailScreen({
 
   const handleContinueLearning = (): void => {
     showToast("Chuyển sang màn hình Video (Coming soon)");
+  };
+
+  const handlePressLesson = (lesson: LessonResponse): void => {
+    const rawLesson = lesson as LessonResponse & {
+      lessonId?: string;
+      type?: string;
+    };
+    const lessonId = String(rawLesson.id ?? rawLesson.lessonId ?? "").trim();
+
+    if (!lessonId) {
+      showToast("Không lấy được thông tin bài học.");
+      return;
+    }
+
+    const lessonType = String(
+      rawLesson.lessonType ?? rawLesson.type ?? "",
+    ).toUpperCase();
+    const lessonTitle = lesson.title ?? "Bài học";
+
+    if (lessonType.includes("VIDEO")) {
+      navigation.navigate("VideoLesson", {
+        lessonId,
+        courseId,
+        lessonTitle,
+      });
+      return;
+    }
+
+    if (lessonType.includes("ARTICLE") || lessonType.includes("CONTENT")) {
+      navigation.navigate("ArticleLesson", {
+        lessonId,
+        courseId,
+        lessonTitle,
+      });
+      return;
+    }
+
+    if (lessonType.includes("QUIZ")) {
+      navigation.navigate("QuizLesson", {
+        lessonId,
+        courseId,
+        lessonTitle,
+      });
+      return;
+    }
+
+    if (lessonType.includes("ASSIGNMENT")) {
+      navigation.navigate("AssignmentLesson", {
+        lessonId,
+        courseId,
+        lessonTitle,
+      });
+      return;
+    }
+
+    showToast("Loại bài học này sẽ được hỗ trợ ở bước tiếp theo.");
   };
 
   if (courseQuery.isLoading) {
@@ -414,7 +638,7 @@ export default function CourseDetailScreen({
               Bestseller
             </Text>
             <Text className="rounded-md bg-violet-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-violet-600">
-              {course.category?.name ?? "Design"}
+              {categoryLabel}
             </Text>
           </View>
 
@@ -461,7 +685,7 @@ export default function CourseDetailScreen({
               <Image
                 source={{
                   uri:
-                    course.instructor?.profile?.avatar ??
+                    course.instructor?.profilePictureUrl ??
                     "https://ui-avatars.com/api/?name=Instructor&background=random",
                 }}
                 className="h-12 w-12 rounded-full"
@@ -523,7 +747,9 @@ export default function CourseDetailScreen({
               sections={sections}
               isPurchased={isPurchased}
               openSections={openSections}
+              completedLessonIds={completedLessonIds}
               onToggleSection={handleToggleSection}
+              onPressLesson={handlePressLesson}
             />
           ) : null}
 
@@ -531,7 +757,7 @@ export default function CourseDetailScreen({
             <CourseReviewsTab
               courseId={String(courseId)}
               isPurchased={isPurchased}
-              reviews={reviewsQuery.data?.reviews ?? []}
+              reviews={reviewsQuery.data ?? []}
             />
           ) : null}
         </View>

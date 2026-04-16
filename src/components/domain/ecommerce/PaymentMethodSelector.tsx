@@ -3,7 +3,7 @@ import { BlurView } from "expo-blur";
 import { type ReactElement } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-export type PaymentMethod = "momo" | "zalopay" | "visa";
+export type PaymentMethod = "momo" | "vnpay";
 
 interface PaymentMethodSelectorProps {
   selectedMethod: PaymentMethod;
@@ -25,18 +25,11 @@ const METHODS: Array<{
     badgeBg: "#a21caf",
   },
   {
-    id: "zalopay",
-    label: "ZaloPay",
-    subtitle: "Quét mã qua ngân hàng",
+    id: "vnpay",
+    label: "VNPay",
+    subtitle: "Thanh toán qua cổng VNPay",
     icon: "qr-code-outline",
     badgeBg: "#2563eb",
-  },
-  {
-    id: "visa",
-    label: "Visa/Mastercard",
-    subtitle: "Thẻ nội địa và quốc tế",
-    icon: "card-outline",
-    badgeBg: "#0f172a",
   },
 ];
 

@@ -2,27 +2,35 @@ import { Ionicons } from "@expo/vector-icons";
 import { type ReactElement } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import type { CourseSectionApi } from "../../services/api/courseApi";
+import type { SectionResponse } from "@/types";
 
 type CourseCurriculumTabProps = {
-  sections: CourseSectionApi[];
+  sections: SectionResponse[];
   isPurchased: boolean;
   openSections: Record<string, boolean>;
+  completedLessonIds: string[];
   onToggleSection: (sectionId: string) => void;
+  onPressLesson: (
+    lesson: NonNullable<SectionResponse["lessons"]>[number],
+  ) => void;
 };
 
 export default function CourseCurriculumTab({
   sections,
   isPurchased,
   openSections,
+  completedLessonIds,
   onToggleSection,
+  onPressLesson,
 }: CourseCurriculumTabProps): ReactElement {
   return (
     <View className="mt-4 gap-3">
       {sections.map((section, sectionIndex) => {
         const sectionId = String(section.id);
         const isOpen = openSections[sectionId] ?? false;
-        const lectures = section.lectures ?? [];
+        const lectures = [...(section.lessons ?? [])].sort(
+          (a, b) => Number(a.orderIndex ?? 0) - Number(b.orderIndex ?? 0),
+        );
 
         return (
           <View
@@ -51,24 +59,48 @@ export default function CourseCurriculumTab({
             {isOpen ? (
               <View className="px-2 pb-2">
                 {lectures.map((lecture, lectureIndex) => {
-                  const locked = !isPurchased && lectureIndex > 0;
-                  const done =
-                    isPurchased && sectionIndex === 0 && lectureIndex === 0;
-                  const current =
-                    isPurchased && sectionIndex === 0 && lectureIndex === 1;
+                  const rawLesson = lecture as {
+                    id?: string;
+                    lessonId?: string;
+                    isPreview?: boolean;
+                    lessonType?: string;
+                    type?: string;
+                  };
+                  const lessonId = String(
+                    rawLesson.id ?? rawLesson.lessonId ?? "",
+                  ).trim();
+                  const lessonType = String(
+                    rawLesson.lessonType ?? rawLesson.type ?? "",
+                  ).toUpperCase();
+                  const isPreview = Boolean(rawLesson.isPreview);
+                  const isCompleted = completedLessonIds.includes(lessonId);
+
+                  // Keep purchase gating but allow explicit preview lessons.
+                  const locked = !isPurchased && !isPreview && lectureIndex > 0;
+                  const canOpen = !locked && lessonId.length > 0;
 
                   return (
-                    <View
-                      key={String(lecture.id)}
+                    <Pressable
+                      key={lessonId || `${sectionId}-${lectureIndex}`}
+                      onPress={() => {
+                        if (canOpen) {
+                          onPressLesson(lecture);
+                        }
+                      }}
+                      disabled={!canOpen}
                       className={`mb-1 flex-row items-center gap-3 rounded-xl p-3 ${
-                        locked ? "bg-white/20" : "bg-white/45"
+                        locked
+                          ? "bg-white/20"
+                          : isCompleted
+                            ? "bg-emerald-50/90"
+                            : "bg-white/45"
                       }`}
                     >
                       <View
                         className={`h-8 w-8 items-center justify-center rounded-full ${
                           locked
                             ? "bg-slate-100"
-                            : done
+                            : isCompleted
                               ? "bg-green-100"
                               : "bg-violet-100"
                         }`}
@@ -77,15 +109,17 @@ export default function CourseCurriculumTab({
                           name={
                             locked
                               ? "lock-closed"
-                              : done
+                              : isCompleted
                                 ? "checkmark-circle"
-                                : current
-                                  ? "play-circle"
-                                  : "play"
+                                : "play"
                           }
                           size={15}
                           color={
-                            locked ? "#94a3b8" : done ? "#16a34a" : "#7c3aed"
+                            locked
+                              ? "#94a3b8"
+                              : isCompleted
+                                ? "#16a34a"
+                                : "#7c3aed"
                           }
                         />
                       </View>
@@ -97,7 +131,13 @@ export default function CourseCurriculumTab({
                           {lecture.title ?? "Bài học"}
                         </Text>
                         <Text className="mt-0.5 text-[10px] font-semibold text-slate-500">
-                          {lecture.videoUrl ? "Video" : "Nội dung"}
+                          {lessonType.includes("VIDEO")
+                            ? "Video"
+                            : lessonType.includes("QUIZ")
+                              ? "Quiz"
+                              : lessonType.includes("ASSIGNMENT")
+                                ? "Assignment"
+                                : "Nội dung"}
                         </Text>
                       </View>
 
@@ -106,7 +146,7 @@ export default function CourseCurriculumTab({
                           Xem trước
                         </Text>
                       ) : null}
-                    </View>
+                    </Pressable>
                   );
                 })}
               </View>

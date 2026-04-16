@@ -14,7 +14,7 @@ import type { OrderApi } from "../../../services/api/orderApi";
 interface CartSummaryBarProps {
   totalPrice: number;
   onCheckout: () => void;
-  onContinuePendingCheckout: (orderId: number) => void;
+  onContinuePendingCheckout: (orderId: string) => void;
   isLoading: boolean;
   pendingOrder?: OrderApi;
   disabled?: boolean;
@@ -40,8 +40,8 @@ export default function CartSummaryBar({
   bottomInset = 16,
   bottomOffset = 0,
 }: CartSummaryBarProps): ReactElement {
-  const pendingOrderId = Number(pendingOrder?.id ?? 0);
-  const hasPendingOrder = Number.isFinite(pendingOrderId) && pendingOrderId > 0;
+  const pendingOrderId = String(pendingOrder?.id ?? "");
+  const hasPendingOrder = pendingOrderId.length > 0;
 
   const handlePressCheckout = (): void => {
     if (hasPendingOrder) {

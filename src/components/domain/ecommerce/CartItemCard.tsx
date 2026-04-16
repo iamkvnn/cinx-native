@@ -16,7 +16,8 @@ const QUICK_TAP_THRESHOLD_MS = 220;
 const SWIPE_PRESS_BLOCK_MS = 280;
 
 export interface CartItemCardData {
-  id: number;
+  cartItemId: string;
+  courseId: string;
   title: string;
   instructorName: string;
   price: number;
@@ -28,7 +29,7 @@ interface CartItemCardProps {
   item: CartItemCardData;
   onPress: (item: CartItemCardData) => void;
   onRemove: (item: CartItemCardData) => Promise<void>;
-  onSwipeableWillOpen?: (id: number) => void;
+  onSwipeableWillOpen?: (id: string) => void;
   setSwipeableRef?: (instance: { close: () => void } | null) => void;
 }
 
@@ -133,7 +134,7 @@ export default function CartItemCard({
       onSwipeableWillOpen={() => {
         swipeActionOpenRef.current = true;
         pressBlockedUntilRef.current = Date.now() + SWIPE_PRESS_BLOCK_MS;
-        onSwipeableWillOpen?.(item.id);
+        onSwipeableWillOpen?.(item.cartItemId);
       }}
       onSwipeableWillClose={() => {
         pressBlockedUntilRef.current = Date.now() + SWIPE_PRESS_BLOCK_MS;

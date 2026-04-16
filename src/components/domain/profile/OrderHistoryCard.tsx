@@ -72,14 +72,9 @@ export default function OrderHistoryCard({
     courseCount > 1
       ? `${firstTitle} + ${courseCount - 1} khóa khác`
       : firstTitle;
-  const thumbnail =
-    firstCourse?.thumbnailUrl ?? firstCourse?.thumbnail_url ?? FALLBACK_IMAGE;
+  const thumbnail = firstCourse?.images?.[0]?.imageUrl ?? FALLBACK_IMAGE;
   const total = Number(
-    order.totalAmount ??
-      order.total_amount ??
-      order.totalPrice ??
-      order.total_price ??
-      0,
+    order.totalAmount ?? order.total_amount ?? order.totalPrice ?? 0,
   );
 
   const badgeClass =

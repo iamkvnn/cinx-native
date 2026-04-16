@@ -1,82 +1,48 @@
-import axios, { type AxiosResponse } from "axios";
+import type { CartItemResponse, CourseResponse } from "@/types";
 
-import axiosClient from "./axiosClient";
+import { CartControllerService } from "./CartControllerService";
 
-type ApiEnvelope<T> = {
-  data: T;
-  message?: string;
-};
-
-export interface CartCourseApi {
-  id: number;
-  title?: string;
-  thumbnailUrl?: string;
-  thumbnail_url?: string;
-  price?: number;
-  instructor?: {
-    fullName?: string;
-    profile?: {
-      fullName?: string;
-    };
-  };
-}
-
-export interface CartItemApi {
-  id: number;
-  quantity?: number;
+export type CartItemApi = CartItemResponse & {
   unitPrice?: number;
   unit_price?: number;
-  course?: CartCourseApi;
-}
+  quantity?: number;
+  course?: (CourseResponse & Record<string, any>) | null;
+} & Record<string, any>;
 
-export interface CartApi {
-  id: number;
+export type CartApi = {
   items?: CartItemApi[];
-}
+} & Record<string, any>;
 
-const unwrapData = <T>(response: AxiosResponse<T | ApiEnvelope<T>>): T => {
-  const payload = response.data;
-
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in (payload as Record<string, unknown>)
-  ) {
-    return (payload as ApiEnvelope<T>).data;
-  }
-
-  return payload as T;
+const mapCartItem = (
+  item: CartItemResponse | null | undefined,
+): CartItemApi => {
+  return {
+    ...(item ?? {}),
+    course: (item?.course ?? null) as CartItemApi["course"],
+  };
 };
 
 export const fetchCart = async (): Promise<CartApi> => {
-  try {
-    const response = await axiosClient.get<CartApi | ApiEnvelope<CartApi>>(
-      "/cart",
-    );
+  const response = await CartControllerService.getCart();
+  return {
+    items: (response.data ?? []).map(mapCartItem),
+  };
+};
 
-    const cart = unwrapData(response);
-    return {
-      id: Number(cart?.id ?? 0),
-      items: Array.isArray(cart?.items) ? cart.items : [],
-    };
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 404) {
-      return {
-        id: 0,
-        items: [],
-      };
-    }
-
-    throw error;
-  }
+export const addCourseToCart = async (
+  courseId: string | number,
+): Promise<void> => {
+  await CartControllerService.addToCart({
+    requestBody: { courseId: String(courseId) },
+  });
 };
 
 export const removeFromCart = async (
-  courseId: number,
-): Promise<{ message?: string }> => {
-  const response = await axiosClient.delete<
-    { message?: string } | ApiEnvelope<{ message?: string }>
-  >(`/cart/${courseId}`);
+  itemId: string | number,
+): Promise<void> => {
+  await CartControllerService.removeFromCart({ itemId: String(itemId) });
+};
 
-  return unwrapData(response);
+export const clearCart = async (): Promise<void> => {
+  await CartControllerService.clearCart();
 };

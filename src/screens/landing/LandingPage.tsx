@@ -20,30 +20,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import Logo from "../../components/ui/Logo";
-import {
-  fetchBestSellers,
-  fetchTopReviews,
-  type BackendCourse,
-  type BackendCourseReview,
-} from "../../services/api/landingApi";
-
-type Course = {
-  id: number;
-  title: string;
-  instructor: string;
-  rating: number;
-  students: string;
-  price: string;
-  image: string;
-  category: string;
-};
-
-type Testimonial = {
-  id: number;
-  text: string;
-  user: string;
-  avatar: string;
-};
+import { CourseControllerService } from "../../services/api/CourseControllerService";
+import { ReviewControllerService } from "../../services/api/ReviewControllerService";
+import type { CourseResponse } from "../../types/CourseResponse";
+import type { ReviewResponse } from "../../types/ReviewResponse";
 
 type Partner = {
   name: string;
@@ -75,6 +55,7 @@ const partners: Partner[] = [
 
 const FALLBACK_THUMBNAIL =
   "https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1200&q=80";
+const FALLBACK_AVATAR = "https://i.pravatar.cc/120?u=reviewer";
 
 const formatPrice = (value: number | string | undefined): string => {
   const numeric = Number(value ?? 0);
@@ -106,35 +87,21 @@ const formatStudents = (value: number | undefined): string => {
   return String(count);
 };
 
-const toRandomRating = (): number => {
-  return Math.round((4.5 + Math.random() * 0.5) * 10) / 10;
-};
+const readCategoryLabel = (category: unknown): string => {
+  if (typeof category === "string" && category.trim().length > 0) {
+    return category;
+  }
 
-const mapCourseToUi = (course: BackendCourse): Course => {
-  return {
-    id: course.id,
-    title: course.title ?? "Untitled course",
-    instructor:
-      course.instructor?.fullName ??
-      course.instructor?.profile?.fullName ??
-      "Unknown instructor",
-    rating: toRandomRating(),
-    students: formatStudents(course.enrollmentCount ?? course.enrollment_count),
-    price: formatPrice(course.price),
-    image: course.thumbnailUrl ?? course.thumbnail_url ?? FALLBACK_THUMBNAIL,
-    category: course.category?.name ?? "General",
-  };
-};
+  if (
+    category &&
+    typeof category === "object" &&
+    "name" in category &&
+    typeof (category as { name?: unknown }).name === "string"
+  ) {
+    return ((category as { name: string }).name || "").trim() || "Tổng hợp";
+  }
 
-const mapReviewToUi = (review: BackendCourseReview): Testimonial => {
-  return {
-    id: review.id,
-    text: review.comment?.trim() || "Great learning experience!",
-    user: review.user?.fullName || "Anonymous",
-    avatar:
-      review.user?.avatar ||
-      `https://i.pravatar.cc/150?u=${review.user?.id ?? review.id}`,
-  };
+  return "Tổng hợp";
 };
 
 function GlassCard({
@@ -230,7 +197,7 @@ function PartnerMarquee(): ReactElement {
   );
 }
 
-function ReviewMarquee({ items }: { items: Testimonial[] }): ReactElement {
+function ReviewMarquee({ items }: { items: ReviewResponse[] }): ReactElement {
   const topItems = items.filter((_, index) => index % 2 === 0);
   const bottomItems = items.filter((_, index) => index % 2 === 1);
 
@@ -251,7 +218,7 @@ function ReviewMarqueeLine({
   items,
   initialOffsetRatio,
 }: {
-  items: Testimonial[];
+  items: ReviewResponse[];
   initialOffsetRatio: number;
 }): ReactElement {
   const translateX = useRef(new Animated.Value(0)).current;
@@ -304,11 +271,13 @@ function ReviewMarqueeLine({
           <GlassCard style={styles.testimonialCard}>
             <View style={styles.testimonialTopRow}>
               <Image
-                source={{ uri: item.avatar }}
+                source={{
+                  uri: `${FALLBACK_AVATAR}&id=${String(item.userId ?? item.id ?? "review")}`,
+                }}
                 style={styles.testimonialAvatar}
               />
               <View>
-                <Text style={styles.testimonialName}>{item.user}</Text>
+                <Text style={styles.testimonialName}>Học viên</Text>
                 <View style={styles.starRow}>
                   {Array.from({ length: 5 }).map((_, starIndex) => (
                     <Ionicons
@@ -321,7 +290,9 @@ function ReviewMarqueeLine({
                 </View>
               </View>
             </View>
-            <Text style={styles.testimonialText}>"{item.text}"</Text>
+            <Text style={styles.testimonialText}>
+              "{item.content ?? "Khóa học rất hữu ích."}"
+            </Text>
           </GlassCard>
         </View>
       ))}
@@ -343,10 +314,12 @@ function ReviewMarqueeLine({
 export default function LandingPage(): ReactElement {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
+  const [courses, setCourses] = useState<CourseResponse[]>([]);
+  const [testimonials, setTestimonials] = useState<ReviewResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const courseController = CourseControllerService;
+  const reviewsController = ReviewControllerService;
 
   useEffect(() => {
     let active = true;
@@ -356,14 +329,18 @@ export default function LandingPage(): ReactElement {
       setError(null);
 
       try {
-        const bestSellers = await fetchBestSellers();
-        const mappedCourses = bestSellers.map(mapCourseToUi);
+        const bestSellersResponse = await courseController.getAllCourses({
+          page: 1,
+          size: 5,
+        });
 
         if (!active) {
           return;
         }
 
-        setCourses(mappedCourses);
+        const bestSellers = bestSellersResponse.data ?? [];
+
+        setCourses(bestSellers);
 
         const firstCourseId = bestSellers[0]?.id;
 
@@ -372,13 +349,22 @@ export default function LandingPage(): ReactElement {
           return;
         }
 
-        const topReviews = await fetchTopReviews(firstCourseId);
+        try {
+          const topReviews = await reviewsController.getReviewsByCourseId({
+            courseId: String(firstCourseId),
+          });
 
-        if (!active) {
-          return;
+          if (!active) {
+            return;
+          }
+
+          setTestimonials(topReviews.data ?? []);
+        } catch {
+          if (active) {
+            // Keep landing usable even when review endpoint requires auth.
+            setTestimonials([]);
+          }
         }
-
-        setTestimonials(topReviews.map(mapReviewToUi));
       } catch (_error) {
         if (active) {
           setError("Khong the tai du lieu trang chu. Vui long thu lai sau.");
@@ -478,17 +464,25 @@ export default function LandingPage(): ReactElement {
               <GlassCard style={styles.courseCard}>
                 <View style={styles.courseImageWrap}>
                   <Image
-                    source={{ uri: course.image }}
+                    source={{
+                      uri: course.images?.[0]?.imageUrl ?? FALLBACK_THUMBNAIL,
+                    }}
                     style={styles.courseImage}
                   />
-                  <Text style={styles.categoryBadge}>{course.category}</Text>
+                  <Text style={styles.categoryBadge}>
+                    {readCategoryLabel(course.category)}
+                  </Text>
                 </View>
 
                 <View style={styles.courseBody}>
                   <View style={styles.ratingRow}>
                     <Ionicons name="star" size={12} color="#f59e0b" />
-                    <Text style={styles.ratingText}>{course.rating}</Text>
-                    <Text style={styles.studentsText}>({course.students})</Text>
+                    <Text style={styles.ratingText}>
+                      {Number(course.rating ?? 0).toFixed(1)}
+                    </Text>
+                    <Text style={styles.studentsText}>
+                      ({formatStudents(course.enrollmentCount)})
+                    </Text>
                   </View>
 
                   <Text style={styles.courseTitle} numberOfLines={2}>
@@ -497,9 +491,11 @@ export default function LandingPage(): ReactElement {
 
                   <View style={styles.courseFooter}>
                     <Text style={styles.instructorText} numberOfLines={1}>
-                      {course.instructor}
+                      {course.instructor?.name ?? "Giảng viên"}
                     </Text>
-                    <Text style={styles.priceText}>{course.price}</Text>
+                    <Text style={styles.priceText}>
+                      {formatPrice(course.price)}
+                    </Text>
                   </View>
                 </View>
               </GlassCard>

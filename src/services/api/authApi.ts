@@ -1,83 +1,256 @@
-import type { AxiosResponse } from "axios";
-
 import type {
-  LoginPayload,
-  LoginResponse,
-  RegisterPayload,
-  SendOtpPayload,
-  SendOtpResponse,
-  UserProfileResponse,
-} from "../../types/auth";
-import axiosClient from "./axiosClient";
+  AuthRequestDto,
+  RefreshTokenRequest,
+  RegisterRequest,
+  SendOtpRequest,
+  UserDto,
+  VerifyEmailRequest,
+} from "@/types";
 
-type ApiEnvelope<T> = {
-  data: T;
-  message?: string;
-};
+import { AuthControllerService } from "./AuthControllerService";
+import { UserControllerService } from "./UserControllerService";
+import type { AuthUser, LoginResult } from "../../types/auth";
 
-const unwrapData = <T>(response: AxiosResponse<T | ApiEnvelope<T>>): T => {
-  const payload = response.data;
-
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in (payload as Record<string, unknown>)
-  ) {
-    return (payload as ApiEnvelope<T>).data;
+const mapUser = (user: UserDto | null | undefined): AuthUser | null => {
+  if (!user) {
+    return null;
   }
 
-  return payload as T;
+  return {
+    ...user,
+    id: user.userId,
+    fullName: user.name,
+    avatar: user.avatarUrl,
+    rewardPoints: user.xp,
+    profile: {
+      fullName: user.name,
+      email: user.email,
+      avatar: user.avatarUrl,
+    },
+  };
 };
 
-export const sendOtp = async (
-  payload: SendOtpPayload,
-): Promise<SendOtpResponse> => {
-  const response = await axiosClient.post<
-    SendOtpResponse | ApiEnvelope<SendOtpResponse>
-  >("/auth/send-otp", payload);
+const getCurrentUserId = async (): Promise<string> => {
+  const current = await fetchCurrentUser();
+  const userId = current?.id ?? current?.userId;
 
-  return unwrapData(response);
-};
-
-export const register = async (payload: RegisterPayload): Promise<void> => {
-  await axiosClient.post("/auth/register", payload);
-};
-
-export const login = async (payload: LoginPayload): Promise<LoginResponse> => {
-  const response = await axiosClient.post<
-    LoginResponse | ApiEnvelope<LoginResponse>
-  >("/auth/login", payload);
-
-  return unwrapData(response);
-};
-
-export const fetchCurrentUser = async (): Promise<UserProfileResponse> => {
-  const response = await axiosClient.get<
-    UserProfileResponse | ApiEnvelope<UserProfileResponse>
-  >("/users/me");
-
-  return unwrapData(response);
-};
-
-export interface ChangePasswordPayload {
-  oldPassword: string;
-  newPassword: string;
-}
-
-export const changePassword = async (
-  payload: ChangePasswordPayload,
-): Promise<{ message?: string }> => {
-  const response = await axiosClient.put<
-    { message?: string } | ApiEnvelope<{ message?: string }>
-  >("/auth/change-password", payload);
-
-  return unwrapData(response);
-};
-
-export const logoutServer = async (): Promise<void> => {
-  try {
-    await axiosClient.post("/auth/logout", {});
-  } catch {
-    // Continue local logout even if server-side logout fails.
+  if (!userId) {
+    throw new Error("Không tìm thấy người dùng hiện tại.");
   }
+
+  return String(userId);
+};
+
+export const fetchCurrentUser = async (): Promise<AuthUser | null> => {
+  const response = await UserControllerService.getCurrentUser();
+  return mapUser(response.data ?? null);
+};
+
+export const login = async ({
+  email,
+  password,
+}: AuthRequestDto): Promise<LoginResult["tokens"]> => {
+  const response = await AuthControllerService.login({
+    requestBody: { email, password },
+  });
+
+  const tokens = response.data;
+
+  if (!tokens) {
+    throw new Error("Không nhận được token đăng nhập.");
+  }
+
+  return tokens;
+};
+
+export const sendOtp = async ({
+  email,
+}: SendOtpRequest & { purpose?: string }): Promise<void> => {
+  await AuthControllerService.resendOtp({
+    requestBody: { email },
+  });
+};
+
+export const register = async ({
+  email,
+  password,
+  fullName,
+  name,
+  role,
+  gender,
+}: RegisterRequest & {
+  fullName?: string;
+  name?: string;
+}): Promise<void> => {
+  const resolvedName = (name ?? fullName ?? "").trim();
+
+  if (!resolvedName) {
+    throw new Error("Tên đăng ký không hợp lệ.");
+  }
+
+  await AuthControllerService.register({
+    requestBody: {
+      name: resolvedName,
+      email,
+      password,
+      role: role ?? "USER",
+      gender,
+    },
+  });
+};
+
+export const refreshToken = async ({
+  token,
+}: RefreshTokenRequest): Promise<LoginResult["tokens"]> => {
+  const response = await AuthControllerService.refreshToken({
+    requestBody: { token },
+  });
+
+  const tokens = response.data;
+
+  if (!tokens) {
+    throw new Error("Không nhận được token mới.");
+  }
+
+  return tokens;
+};
+
+export const sendUpdateOtp = async ({
+  email,
+  phone,
+}: {
+  email?: string;
+  phone?: string;
+}): Promise<void> => {
+  if (email) {
+    await AuthControllerService.sendChangeEmailOtp({
+      requestBody: { email },
+    });
+    return;
+  }
+
+  if (phone) {
+    throw new Error("Backend mới chưa hỗ trợ đổi số điện thoại.");
+  }
+
+  const currentUser = await fetchCurrentUser();
+
+  if (!currentUser?.email) {
+    throw new Error("Không tìm thấy email người dùng hiện tại.");
+  }
+
+  await AuthControllerService.sendChangePasswordOtp({
+    requestBody: { email: currentUser.email },
+  });
+};
+
+export const updateProfile = async ({
+  fullName,
+  avatarUri,
+  bio,
+}: {
+  fullName?: string;
+  avatarUri?: string;
+  bio?: string;
+}): Promise<AuthUser> => {
+  const currentUserId = await getCurrentUserId();
+
+  let avatarPayload:
+    | Blob
+    | {
+        uri: string;
+        name: string;
+        type: string;
+      }
+    | undefined;
+
+  if (avatarUri) {
+    const isLocalUri = /^(file|content|ph):\/\//.test(avatarUri);
+
+    if (isLocalUri) {
+      avatarPayload = {
+        uri: avatarUri,
+        name: `avatar-${Date.now()}.jpg`,
+        type: "image/jpeg",
+      };
+    } else {
+      try {
+        avatarPayload = await (await fetch(avatarUri)).blob();
+      } catch {
+        throw new Error("Không thể tải ảnh đại diện đã chọn.");
+      }
+    }
+  }
+
+  const userPayload: Record<string, unknown> = {};
+
+  if (fullName !== undefined) {
+    userPayload.name = fullName.trim();
+  }
+
+  if (bio !== undefined) {
+    userPayload.bio = bio;
+  }
+
+  const response = await UserControllerService.updateUser({
+    id: currentUserId,
+    formData: {
+      user: userPayload as never,
+      avatar: avatarPayload as never,
+    },
+  });
+
+  const user = mapUser(response.data ?? null);
+
+  if (!user) {
+    throw new Error("Không thể cập nhật hồ sơ.");
+  }
+
+  return user;
+};
+
+export const updateSensitiveInfo = async ({
+  otp,
+  newEmail,
+  newPhone,
+  newPassword,
+}: {
+  otp: string;
+  newEmail?: string;
+  newPhone?: string;
+  newPassword?: string;
+}): Promise<AuthUser> => {
+  const currentUser = await fetchCurrentUser();
+
+  if (!currentUser?.email) {
+    throw new Error("Không tìm thấy thông tin người dùng hiện tại.");
+  }
+
+  if (newEmail) {
+    await AuthControllerService.changeEmail({
+      requestBody: {
+        oldEmail: currentUser.email,
+        otp,
+        newEmail,
+      },
+    });
+  } else if (newPassword) {
+    await AuthControllerService.resetPassword({
+      requestBody: {
+        email: currentUser.email,
+        otp,
+        newPassword,
+      },
+    });
+  } else if (newPhone) {
+    throw new Error("Backend mới chưa hỗ trợ đổi số điện thoại.");
+  }
+
+  const refreshedUser = await fetchCurrentUser();
+
+  if (!refreshedUser) {
+    throw new Error("Không thể làm mới thông tin người dùng.");
+  }
+
+  return refreshedUser;
 };

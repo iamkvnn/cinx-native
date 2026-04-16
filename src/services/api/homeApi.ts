@@ -1,51 +1,40 @@
-import type { AxiosResponse } from "axios";
+import type { CourseResponse } from "@/types";
 
-import axiosClient from "./axiosClient";
+import { CourseControllerService } from "./CourseControllerService";
 
-type ApiEnvelope<T> = {
-  data: T;
-  message?: string;
-};
-
-export interface RecommendationCourseApi {
-  id: number;
-  title?: string;
-  price?: number | string;
-  thumbnailUrl?: string;
-  thumbnail_url?: string;
-  enrollmentCount?: number;
-  enrollment_count?: number;
-  instructor?: {
-    fullName?: string;
-    profile?: {
-      fullName?: string;
-    };
+export type RecommendationCourseApi = CourseResponse &
+  Record<string, any> & {
+    thumbnailUrl?: string;
+    thumbnail_url?: string;
+    enrollment_count?: number;
   };
-  category?: {
-    name?: string;
+
+const toRecommendation = (course: CourseResponse): RecommendationCourseApi => {
+  const firstImageUrl = course.images?.[0]?.imageUrl;
+
+  return {
+    ...(course as CourseResponse & Record<string, any>),
+    thumbnailUrl: firstImageUrl,
+    thumbnail_url: firstImageUrl,
+    enrollment_count: Number(course.enrollmentCount ?? 0),
   };
-}
-
-const unwrapData = <T>(response: AxiosResponse<T | ApiEnvelope<T>>): T => {
-  const payload = response.data;
-
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in (payload as Record<string, unknown>)
-  ) {
-    return (payload as ApiEnvelope<T>).data;
-  }
-
-  return payload as T;
 };
 
 export const fetchRecommendations = async (): Promise<
   RecommendationCourseApi[]
 > => {
-  const response = await axiosClient.get<
-    RecommendationCourseApi[] | ApiEnvelope<RecommendationCourseApi[]>
-  >("/courses/best-sellers");
+  const response = await CourseControllerService.getAllCourses({
+    page: 1,
+    size: 12,
+  });
 
-  return unwrapData(response);
+  const courses = response.data ?? [];
+
+  return courses
+    .map(toRecommendation)
+    .sort(
+      (a, b) =>
+        Number(b.enrollmentCount ?? b.enrollment_count ?? 0) -
+        Number(a.enrollmentCount ?? a.enrollment_count ?? 0),
+    );
 };

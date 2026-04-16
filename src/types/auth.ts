@@ -1,47 +1,20 @@
-export interface LoginTokens {
-  accessToken: string;
-  refreshToken?: string;
-}
+import type { TokenResponseDto, UserDto } from "@/types";
 
-export interface LoginPayload {
-  email: string;
-  password: string;
-}
-
-export interface SendOtpPayload {
-  email: string;
-  purpose: string;
-}
-
-export interface RegisterPayload {
-  email: string;
-  password: string;
-  fullName: string;
-  otp: string;
-}
-
-export interface SendOtpResponse {
-  message?: string;
-}
-
-export interface AuthUser {
+export type AuthUser = UserDto & {
   id?: string;
-  email?: string;
   fullName?: string;
   avatar?: string;
-  phone?: string;
   rewardPoints?: number;
-  [key: string]: unknown;
-}
+  phone?: string;
+  profile?: {
+    fullName?: string;
+    email?: string;
+    phone?: string;
+    avatar?: string;
+  };
+} & Record<string, any>;
 
-export interface LoginResponse {
-  accessToken: string;
-  refreshToken?: string;
-}
-
-export type UserProfileResponse = AuthUser;
-
-export interface LoginResult {
-  tokens: LoginTokens;
+export type LoginResult = {
+  tokens: TokenResponseDto;
   user: AuthUser | null;
-}
+};

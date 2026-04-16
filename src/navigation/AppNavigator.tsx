@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { useEffect } from "react";
 import type { NavigatorScreenParams } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useQuery } from "@tanstack/react-query";
@@ -18,16 +19,20 @@ import ExploreScreen from "../screens/main/ExploreScreen";
 import MyLearningScreen from "../screens/main/MyLearningScreen";
 import { ProfileScreen, PurchaseHistoryScreen } from "../screens/profile";
 import CourseDetailScreen from "../screens/course/CourseDetailScreen";
+import VideoLessonScreen from "../screens/course/VideoLessonScreen";
+import QuizLessonScreen from "../screens/course/QuizLessonScreen";
+import AssignmentLessonScreen from "../screens/course/AssignmentLessonScreen";
+import ArticleLessonScreen from "../screens/course/ArticleLessonScreen";
+import NotificationsScreen from "../screens/profile/NotificationsScreen";
 import CartScreen from "../screens/ecommerce/CartScreen";
 import CheckoutScreen from "../screens/ecommerce/CheckoutScreen";
 import LandingPage from "../screens/landing/LandingPage";
 import { fetchCart } from "../services/api/cartApi";
+import { NotificationControllerService } from "../services/api/NotificationControllerService";
+import { registerPushTokenIfNeeded } from "../services/notifications/pushNotifications";
 import {
   MyCertificatesScreen,
-  DownloadedFilesScreen,
   VouchersScreen,
-  PaymentMethodsScreen,
-  HelpCenterScreen,
 } from "../screens/profile/ProfileMenuScreens";
 
 export type RootStackParamList = {
@@ -40,14 +45,20 @@ export type RootStackParamList = {
     | undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   CourseDetail: { courseId?: string };
+  VideoLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
+  ArticleLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
+  QuizLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
+  AssignmentLesson: {
+    lessonId: string;
+    courseId?: string;
+    lessonTitle?: string;
+  };
   Cart: undefined;
   Checkout: { orderId?: string };
   MyCertificates: undefined;
-  DownloadedFiles: undefined;
   OrderHistory: undefined;
+  Notifications: undefined;
   Vouchers: undefined;
-  PaymentMethods: undefined;
-  HelpCenter: undefined;
 };
 
 export type MainTabParamList = {
@@ -77,7 +88,11 @@ function GlassSwipeTabBar({
   descriptors,
   navigation,
   cartCount,
-}: MaterialTopTabBarProps & { cartCount: number }): ReactElement {
+  notificationCount,
+}: MaterialTopTabBarProps & {
+  cartCount: number;
+  notificationCount: number;
+}): ReactElement {
   return (
     <View style={styles.tabBar}>
       <View style={styles.tabBarBackgroundContainer} pointerEvents="none">
@@ -96,7 +111,12 @@ function GlassSwipeTabBar({
           const color = isFocused ? "#7958ee" : "#64748b";
           const iconName = TAB_ICON_MAP[route.name as keyof MainTabParamList];
           const { options } = descriptors[route.key];
-          const tabBadge = route.name === "Cart" ? cartCount : 0;
+          const tabBadge =
+            route.name === "Cart"
+              ? cartCount
+              : route.name === "Profile"
+                ? notificationCount
+                : 0;
 
           const onPress = (): void => {
             const event = navigation.emit({
@@ -141,17 +161,30 @@ function GlassSwipeTabBar({
 function MainTabs(): ReactElement {
   const user = useAuthStore((state) => state.user);
   const cartQuery = useQuery({
-    queryKey: ["cart"],
+    queryKey: ["cart", "badge"],
     queryFn: fetchCart,
     enabled: Boolean(user),
     retry: false,
   });
+  const unreadNotificationsQuery = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () => NotificationControllerService.countUnreadNotifications(),
+    enabled: Boolean(user),
+    retry: false,
+  });
   const cartCount = cartQuery.data?.items?.length || 0;
+  const notificationCount = Number(unreadNotificationsQuery.data?.data ?? 0);
 
   return (
     <Tab.Navigator
       tabBarPosition="bottom"
-      tabBar={(props) => <GlassSwipeTabBar {...props} cartCount={cartCount} />}
+      tabBar={(props) => (
+        <GlassSwipeTabBar
+          {...props}
+          cartCount={cartCount}
+          notificationCount={notificationCount}
+        />
+      )}
       screenOptions={{
         swipeEnabled: true,
         animationEnabled: true,
@@ -200,6 +233,14 @@ function MainTabs(): ReactElement {
 export default function AppNavigator(): ReactElement {
   const user = useAuthStore((state) => state.user);
 
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    void registerPushTokenIfNeeded();
+  }, [user]);
+
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
@@ -225,18 +266,7 @@ export default function AppNavigator(): ReactElement {
             name="MyCertificates"
             component={MyCertificatesScreen}
             options={{
-              title: "Chứng chỉ của tôi",
-              headerShown: true,
-              headerTintColor: "#2563eb",
-            }}
-          />
-          <RootStack.Screen
-            name="DownloadedFiles"
-            component={DownloadedFilesScreen}
-            options={{
-              title: "Tài liệu đã tải",
-              headerShown: true,
-              headerTintColor: "#2563eb",
+              headerShown: false,
             }}
           />
           <RootStack.Screen
@@ -247,30 +277,17 @@ export default function AppNavigator(): ReactElement {
             }}
           />
           <RootStack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen
             name="Vouchers"
             component={VouchersScreen}
             options={{
-              title: "Mã giảm giá",
-              headerShown: true,
-              headerTintColor: "#2563eb",
-            }}
-          />
-          <RootStack.Screen
-            name="PaymentMethods"
-            component={PaymentMethodsScreen}
-            options={{
-              title: "Phương thức thanh toán",
-              headerShown: true,
-              headerTintColor: "#2563eb",
-            }}
-          />
-          <RootStack.Screen
-            name="HelpCenter"
-            component={HelpCenterScreen}
-            options={{
-              title: "Trung tâm trợ giúp",
-              headerShown: true,
-              headerTintColor: "#2563eb",
+              headerShown: false,
             }}
           />
         </RootStack.Group>
@@ -283,6 +300,50 @@ export default function AppNavigator(): ReactElement {
 
       <RootStack.Group screenOptions={{ headerShown: false }}>
         <RootStack.Screen name="CourseDetail" component={CourseDetailScreen} />
+        <RootStack.Screen
+          name="VideoLesson"
+          component={VideoLessonScreen}
+          options={{
+            headerShown: true,
+            title: "Video bài học",
+            headerBackTitle: "",
+            headerBackButtonDisplayMode: "minimal",
+            headerTintColor: "#2563eb",
+          }}
+        />
+        <RootStack.Screen
+          name="ArticleLesson"
+          component={ArticleLessonScreen}
+          options={{
+            headerShown: true,
+            title: "Bài nội dung",
+            headerBackTitle: "",
+            headerBackButtonDisplayMode: "minimal",
+            headerTintColor: "#2563eb",
+          }}
+        />
+        <RootStack.Screen
+          name="QuizLesson"
+          component={QuizLessonScreen}
+          options={{
+            headerShown: true,
+            title: "Bài quiz",
+            headerBackTitle: "",
+            headerBackButtonDisplayMode: "minimal",
+            headerTintColor: "#2563eb",
+          }}
+        />
+        <RootStack.Screen
+          name="AssignmentLesson"
+          component={AssignmentLessonScreen}
+          options={{
+            headerShown: true,
+            title: "Assignment",
+            headerBackTitle: "",
+            headerBackButtonDisplayMode: "minimal",
+            headerTintColor: "#2563eb",
+          }}
+        />
       </RootStack.Group>
     </RootStack.Navigator>
   );

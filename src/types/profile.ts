@@ -1,5 +1,3 @@
-// Profile screen type definitions
-
 export interface UserProfile {
   id: string;
   name: string;

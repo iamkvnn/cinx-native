@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Circle } from "react-native-svg";
 import CourseCard from "../../components/domain/course/CourseCard";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 
@@ -23,11 +24,14 @@ import {
   type RecommendationCourseApi,
 } from "../../services/api/homeApi";
 import {
+  fetchDailyGoal,
   fetchMyCourses,
+  fetchMyStreak,
   type MyCourseApiItem,
 } from "../../services/api/myLearningApi";
 import { useAuthStore } from "../../store/useAuthStore";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
+import { fetchCurrentUser } from "../../services/api/authApi";
 
 type ContinueLearningItem = {
   id: string;
@@ -58,12 +62,6 @@ const STATIC_QUOTE = {
   content:
     '"Học tập không phải hạt giống kiến thức, mà là hạt giống của hạnh phúc."',
   author: "Tuc ngu Zen",
-};
-
-const STATIC_GOALS = {
-  achievedXp: 350,
-  targetXp: 500,
-  dailyTaskLabel: "Làm 1 Quiz",
 };
 
 const formatLearners = (value: number | undefined): string => {
@@ -120,14 +118,16 @@ const mapMyCourseToContinueLearning = (
 const mapRecommendationItem = (
   course: RecommendationCourseApi,
 ): RecommendationItem => {
-  const instructorName =
-    course.instructor?.fullName ??
-    course.instructor?.profile?.fullName ??
-    "Giảng viên";
+  const instructorName = course.instructor?.name ?? "Giảng viên";
+
+  const categoryLabel =
+    typeof course.category === "string" && course.category.trim().length > 0
+      ? course.category
+      : "Tổng hợp";
 
   return {
     id: String(course.id),
-    tag: course.category?.name ?? "Tổng hợp",
+    tag: categoryLabel,
     title: course.title ?? "Khóa học",
     description: instructorName,
     imageUrl:
@@ -231,21 +231,91 @@ function RecommendationCard({
   );
 }
 
+function GoalProgressRing({
+  progress,
+  achievedXp,
+}: {
+  progress: number;
+  achievedXp: number;
+}): ReactElement {
+  const size = 72;
+  const strokeWidth = 8;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const normalizedProgress = Math.max(0, Math.min(100, progress));
+  const dashOffset =
+    circumference - (normalizedProgress / 100) * circumference;
+
+  return (
+    <View className="mb-2 h-[72px] w-[72px] items-center justify-center">
+      <Svg width={size} height={size} style={{ transform: [{ rotate: "-90deg" }] }}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="#e2e8f0"
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="#8b5cf6"
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={dashOffset}
+        />
+      </Svg>
+
+      <View className="absolute items-center justify-center">
+        <Text className="text-sm font-bold text-slate-700">{achievedXp}</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function HomeScreen(): ReactElement {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const user = useAuthStore((state) => state.user);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const [refreshing, setRefreshing] = useState(false);
+  const todayDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const [myCoursesQuery, recommendationsQuery] = useQueries({
+  const [
+    myCoursesQuery,
+    recommendationsQuery,
+    streakQuery,
+    dailyGoalQuery,
+    currentUserQuery,
+  ] = useQueries({
     queries: [
       {
         queryKey: ["home", "my-courses"],
         queryFn: fetchMyCourses,
+        enabled: isAuthenticated,
       },
       {
         queryKey: ["home", "recommendations"],
         queryFn: fetchRecommendations,
+      },
+      {
+        queryKey: ["home", "streak"],
+        queryFn: fetchMyStreak,
+        enabled: isAuthenticated,
+      },
+      {
+        queryKey: ["home", "daily-goal", todayDate],
+        queryFn: () => fetchDailyGoal(todayDate),
+        enabled: isAuthenticated,
+      },
+      {
+        queryKey: ["home", "current-user"],
+        queryFn: fetchCurrentUser,
+        enabled: isAuthenticated,
       },
     ],
   });
@@ -260,16 +330,42 @@ export default function HomeScreen(): ReactElement {
     return items.map(mapRecommendationItem);
   }, [recommendationsQuery.data]);
 
-  const isLoading = myCoursesQuery.isLoading || recommendationsQuery.isLoading;
-  const isError = myCoursesQuery.isError || recommendationsQuery.isError;
+  const isLoading =
+    myCoursesQuery.isLoading ||
+    recommendationsQuery.isLoading ||
+    streakQuery.isLoading ||
+    dailyGoalQuery.isLoading;
+  const isError =
+    myCoursesQuery.isError ||
+    recommendationsQuery.isError ||
+    streakQuery.isError ||
+    dailyGoalQuery.isError;
+
+  const currentStreak = Number(streakQuery.data?.currentStreak ?? 0);
+  const todayGoal = dailyGoalQuery.data;
+  const achievedXp = Math.max(0, Number(todayGoal?.currentXp ?? 0));
+  const targetXp = Math.max(50, Number(todayGoal?.targetXp ?? 0));
+  const remainingXp = Math.max(0, targetXp - achievedXp);
+  const goalProgressPercent = Math.max(
+    0,
+    Math.min(100, Math.round((achievedXp / targetXp) * 100)),
+  );
+
+  const goalStatusLabel = todayGoal
+    ? todayGoal.isCompleted
+      ? "Mục tiêu hôm nay đã hoàn thành"
+      : `Còn ${remainingXp} XP để hoàn thành`
+    : "Chưa có goal hôm nay";
+
+  const activeUser = currentUserQuery.data ?? user;
 
   const displayName =
-    (user?.profile as { fullName?: string } | undefined)?.fullName ??
-    user?.fullName ??
+    (activeUser?.profile as { fullName?: string } | undefined)?.fullName ??
+    activeUser?.fullName ??
     "Hoc vien";
   const avatarUrl =
-    (user?.profile as { avatar?: string } | undefined)?.avatar ??
-    user?.avatar ??
+    (activeUser?.profile as { avatar?: string } | undefined)?.avatar ??
+    activeUser?.avatar ??
     FALLBACK_AVATAR;
 
   const onRefresh = async (): Promise<void> => {
@@ -278,6 +374,9 @@ export default function HomeScreen(): ReactElement {
       await Promise.all([
         myCoursesQuery.refetch(),
         recommendationsQuery.refetch(),
+        streakQuery.refetch(),
+        dailyGoalQuery.refetch(),
+        currentUserQuery.refetch(),
       ]);
     } finally {
       setRefreshing(false);
@@ -308,6 +407,9 @@ export default function HomeScreen(): ReactElement {
           onPress={() => {
             void myCoursesQuery.refetch();
             void recommendationsQuery.refetch();
+            void streakQuery.refetch();
+            void dailyGoalQuery.refetch();
+            void currentUserQuery.refetch();
           }}
         >
           <Text className="text-sm font-bold text-white">Thu lai</Text>
@@ -359,7 +461,9 @@ export default function HomeScreen(): ReactElement {
             className="flex-row items-center gap-2 rounded-full px-3 py-1.5"
           >
             <Ionicons name="flame" size={14} color="#f97316" />
-            <Text className="text-sm font-bold text-slate-700">7 Ngày</Text>
+            <Text className="text-sm font-bold text-slate-700">
+              {currentStreak} Ngày
+            </Text>
           </View>
         </View>
 
@@ -434,39 +538,31 @@ export default function HomeScreen(): ReactElement {
         <Text className="mb-4 text-lg font-extrabold text-slate-800">
           Mục tiêu hôm nay
         </Text>
-        <View className="mb-8 flex-row gap-4">
-          <View
-            style={styles.glassCard}
-            className="flex-1 items-center rounded-[24px] p-4"
-          >
-            <View className="mb-2 h-16 w-16 items-center justify-center rounded-full border-[6px] border-slate-100 border-r-violet-500 border-t-violet-500">
-              <Text className="text-sm font-bold text-slate-700">
-                {STATIC_GOALS.achievedXp}
-              </Text>
-            </View>
-            <Text className="text-xs font-bold text-slate-500">
-              XP đạt được
-            </Text>
-            <Text className="text-[10px] text-slate-400">
-              Mục tiêu: {STATIC_GOALS.targetXp} XP
-            </Text>
-          </View>
+        <View
+          style={styles.glassCard}
+          className="mb-8 rounded-[24px] p-4"
+        >
+          <View className="flex-row items-center gap-4">
+            <GoalProgressRing progress={goalProgressPercent} achievedXp={achievedXp} />
 
-          <View style={styles.glassCard} className="flex-1 rounded-[24px] p-4">
-            <Text className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">
-              Daily task
-            </Text>
-            <View className="mb-2 flex-row items-center gap-2 opacity-55">
-              <Ionicons name="checkmark-circle" size={16} color="#10b981" />
-              <Text className="text-xs text-slate-500 line-through">
-                Xem 1 Video
+            <View className="flex-1">
+              <Text className="text-xs font-bold text-slate-500">
+                XP đạt được hôm nay
               </Text>
-            </View>
-            <View className="flex-row items-center gap-2">
-              <Ionicons name="ellipse-outline" size={14} color="#8b5cf6" />
-              <Text className="text-xs font-bold text-slate-700">
-                {STATIC_GOALS.dailyTaskLabel}
+              <Text className="mt-1 text-[10px] text-slate-400">
+                Mục tiêu: {targetXp} XP ({goalProgressPercent}%)
               </Text>
+
+              <View className="mt-3 flex-row items-center gap-2">
+                <Ionicons
+                  name={todayGoal?.isCompleted ? "checkmark-circle" : "ellipse-outline"}
+                  size={14}
+                  color={todayGoal?.isCompleted ? "#10b981" : "#8b5cf6"}
+                />
+                <Text className="text-xs font-bold text-slate-700">
+                  {goalStatusLabel}
+                </Text>
+              </View>
             </View>
           </View>
         </View>

@@ -108,8 +108,13 @@ const formatPriceLabel = (price: number | string | undefined): string => {
 };
 
 const mapCourseItem = (item: ExploreCourseApi): ExploreCourseItem => {
+  const resolvedCategory =
+    typeof item.category === "string"
+      ? { id: "", name: item.category }
+      : item.category;
   const instructorName =
     item.instructor?.fullName ??
+    item.instructor?.name ??
     item.instructor?.profile?.fullName ??
     "Giảng viên";
 
@@ -117,8 +122,8 @@ const mapCourseItem = (item: ExploreCourseApi): ExploreCourseItem => {
     id: String(item.id),
     title: item.title ?? "Khóa học",
     subtitle: instructorName,
-    categoryId: String(item.category?.id ?? ""),
-    categoryLabel: item.category?.name ?? "Tổng hợp",
+    categoryId: String(resolvedCategory?.id ?? ""),
+    categoryLabel: resolvedCategory?.name ?? "Tổng hợp",
     durationLabel: "10 giờ",
     rating: 4.8,
     learnersLabel: formatLearners(
@@ -230,7 +235,7 @@ export default function ExploreScreen(): ReactElement {
   const categories = useMemo<ExploreCategory[]>(() => {
     const fromApi = (categoriesQuery.data ?? []).map((category) => ({
       id: String(category.id),
-      name: category.name,
+      name: category.name ?? "Danh mục",
     }));
 
     return [{ id: "", name: "Tất cả" }, ...fromApi];

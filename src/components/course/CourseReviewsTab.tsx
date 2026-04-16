@@ -12,19 +12,37 @@ import {
   View,
 } from "react-native";
 
-import { fetchCurrentUser } from "../../services/api/authApi";
-import {
-  submitReview,
-  type CourseReviewApi,
-} from "../../services/api/courseApi";
+import type { CreateReviewRequest, ReviewResponse, UserDto } from "@/types";
+import { ReviewControllerService } from "../../services/api/ReviewControllerService";
+import { UserControllerService } from "../../services/api/UserControllerService";
 import { useAuthStore } from "../../store/useAuthStore";
+import type { AuthUser } from "../../types/auth";
 
 const FALLBACK_AVATAR = "https://i.pravatar.cc/150?u=review";
 
 type CourseReviewsTabProps = {
   courseId: string;
   isPurchased: boolean;
-  reviews: CourseReviewApi[];
+  reviews: Array<ReviewResponse & { createdAt?: string }>;
+};
+
+const mapUser = (user: UserDto | null | undefined): AuthUser | null => {
+  if (!user) {
+    return null;
+  }
+
+  return {
+    ...user,
+    id: user.userId,
+    fullName: user.name,
+    avatar: user.avatarUrl,
+    rewardPoints: user.xp,
+    profile: {
+      fullName: user.name,
+      email: user.email,
+      avatar: user.avatarUrl,
+    },
+  };
 };
 
 const getApiErrorMessage = (error: unknown, fallback: string): string => {
@@ -143,10 +161,12 @@ export default function CourseReviewsTab({
 
     try {
       setIsSubmitting(true);
-      await submitReview({
-        courseId,
-        rating,
-        comment: normalizedComment,
+      await ReviewControllerService.createReview({
+        requestBody: {
+          courseId,
+          rating,
+          content: normalizedComment,
+        } satisfies CreateReviewRequest,
       });
 
       Alert.alert(
@@ -164,8 +184,8 @@ export default function CourseReviewsTab({
       ]);
 
       try {
-        const freshUser = await fetchCurrentUser();
-        useAuthStore.getState().setUser(freshUser);
+        const response = await UserControllerService.getCurrentUser();
+        useAuthStore.getState().setUser(mapUser(response.data ?? null));
       } catch {
         // Keep UI flow smooth even if profile refresh fails.
       }
@@ -289,12 +309,21 @@ export default function CourseReviewsTab({
           <View className="mb-2 flex-row items-start justify-between">
             <View className="flex-row items-center gap-2">
               <Image
-                source={{ uri: review.user?.avatar ?? FALLBACK_AVATAR }}
+                source={{
+                  uri:
+                    (String(review.userId ?? "") ===
+                    String(currentUser?.id ?? "")
+                      ? currentUser?.avatar
+                      : undefined) ??
+                    `${FALLBACK_AVATAR}&id=${String(review.userId ?? review.id ?? "review")}`,
+                }}
                 className="h-8 w-8 rounded-full"
               />
               <View>
                 <Text className="text-sm font-bold text-slate-800">
-                  {review.user?.fullName ?? "Học viên"}
+                  {String(review.userId ?? "") === String(currentUser?.id ?? "")
+                    ? (currentUser?.fullName ?? "Bạn")
+                    : "Học viên"}
                 </Text>
                 <Text className="text-[10px] text-slate-500">
                   {formatRelativeTime(review.createdAt)}
@@ -314,7 +343,7 @@ export default function CourseReviewsTab({
           </View>
 
           <Text className="text-sm font-medium leading-6 text-slate-600">
-            {review.comment ?? ""}
+            {review.content ?? ""}
           </Text>
         </View>
       ))}

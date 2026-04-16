@@ -100,14 +100,12 @@ const mapCartItem = (item: CartItemApi): CartItemCardData => {
   const course = item.course;
 
   return {
-    id: Number(course?.id ?? 0),
+    cartItemId: String(item.id ?? ""),
+    courseId: String(course?.id ?? ""),
     title: course?.title?.trim() || "Khóa học chưa cập nhật",
-    instructorName:
-      course?.instructor?.fullName ??
-      course?.instructor?.profile?.fullName ??
-      "Giảng viên",
+    instructorName: course?.instructor?.name ?? "Giảng viên",
     price: getItemPrice(item),
-    imageUrl: course?.thumbnailUrl ?? course?.thumbnail_url ?? FALLBACK_IMAGE,
+    imageUrl: course?.images?.[0]?.imageUrl ?? FALLBACK_IMAGE,
   };
 };
 
@@ -117,7 +115,7 @@ export default function CartScreen(): ReactElement {
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const swipeableRefs = useRef<Record<number, { close: () => void } | null>>(
+  const swipeableRefs = useRef<Record<string, { close: () => void } | null>>(
     {},
   );
 
@@ -142,9 +140,9 @@ export default function CartScreen(): ReactElement {
 
   const cartItems = useMemo<CartItemCardData[]>(() => {
     const payload: CartApi | undefined = cartQuery.data;
-    return (payload?.items ?? [])
-      .map(mapCartItem)
-      .filter((item) => item.id > 0);
+    return (payload?.items ?? []).map(mapCartItem).filter((item) => {
+      return item.cartItemId.length > 0 && item.courseId.length > 0;
+    });
   }, [cartQuery.data]);
 
   const totalPrice = useMemo<number>(() => {
@@ -183,7 +181,7 @@ export default function CartScreen(): ReactElement {
     }
 
     try {
-      await removeItemMutation.mutateAsync(item.id);
+      await removeItemMutation.mutateAsync(item.cartItemId);
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["cart"] }),
@@ -196,9 +194,9 @@ export default function CartScreen(): ReactElement {
     }
   };
 
-  const handleSwipeableWillOpen = (openId: number): void => {
+  const handleSwipeableWillOpen = (openId: string): void => {
     Object.entries(swipeableRefs.current).forEach(([id, ref]) => {
-      if (Number(id) !== openId) {
+      if (id !== openId) {
         ref?.close();
       }
     });
@@ -227,9 +225,9 @@ export default function CartScreen(): ReactElement {
 
     try {
       const response = await checkoutMutation.mutateAsync(undefined);
-      const orderId = Number(response?.id);
+      const orderId = String(response?.id ?? "");
 
-      if (!Number.isFinite(orderId) || orderId <= 0) {
+      if (!orderId) {
         showToast("Không lấy được thông tin đơn hàng.");
         return;
       }
@@ -241,7 +239,7 @@ export default function CartScreen(): ReactElement {
 
       await ordersQuery.refetch();
 
-      navigation.navigate("Checkout", { orderId: String(orderId) });
+      navigation.navigate("Checkout", { orderId });
     } catch (error) {
       const refreshedOrders = await ordersQuery.refetch();
       const pendingFromRefetch = (refreshedOrders.data ?? []).find((order) =>
@@ -262,7 +260,7 @@ export default function CartScreen(): ReactElement {
   };
 
   const handlePressCourse = (item: CartItemCardData): void => {
-    navigation.navigate("CourseDetail", { courseId: String(item.id) });
+    navigation.navigate("CourseDetail", { courseId: item.courseId });
   };
 
   const handleExplore = (): void => {
@@ -359,18 +357,18 @@ export default function CartScreen(): ReactElement {
             {cartItems.length > 0 ? (
               cartItems.map((item) => (
                 <CartItemCard
-                  key={item.id}
+                  key={item.cartItemId}
                   item={item}
                   onPress={handlePressCourse}
                   onRemove={handleRemoveCartItem}
                   onSwipeableWillOpen={handleSwipeableWillOpen}
                   setSwipeableRef={(instance) => {
                     if (instance) {
-                      swipeableRefs.current[item.id] = instance;
+                      swipeableRefs.current[item.cartItemId] = instance;
                       return;
                     }
 
-                    delete swipeableRefs.current[item.id];
+                    delete swipeableRefs.current[item.cartItemId];
                   }}
                 />
               ))

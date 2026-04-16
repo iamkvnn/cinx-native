@@ -1,19 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios, { type InternalAxiosRequestConfig } from "axios";
 
-const ACCESS_TOKEN_STORAGE_KEY = "accessToken";
-
-const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL;
-
-if (!apiBaseUrl) {
-  console.warn(
-    "Missing EXPO_PUBLIC_API_URL. Set it in .env to call backend APIs.",
-  );
-}
+import env from "../../env";
 
 const axiosClient = axios.create({
+  baseURL: env.apiUrl,
   timeout: 60000,
-  baseURL: apiBaseUrl,
   headers: {
     "Content-Type": "application/json",
   },
@@ -23,7 +15,7 @@ axiosClient.interceptors.request.use(
   async (
     config: InternalAxiosRequestConfig,
   ): Promise<InternalAxiosRequestConfig> => {
-    const token = await AsyncStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+    const token = await AsyncStorage.getItem(env.accessToken);
 
     if (token) {
       config.headers = config.headers ?? {};
@@ -32,6 +24,17 @@ axiosClient.interceptors.request.use(
     }
 
     return config;
+  },
+);
+
+axiosClient.interceptors.response.use(
+  (response) => response.data,
+  async (error) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      await AsyncStorage.removeItem(env.accessToken);
+    }
+
+    return Promise.reject(error);
   },
 );
 

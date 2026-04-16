@@ -17,7 +17,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
-import { register as registerApi, sendOtp } from "../../services/api/authApi";
+import { AuthControllerService } from "../../services/api/AuthControllerService";
+import { register as registerUser } from "../../services/api/authApi";
 import { useAuthStore } from "../../store/useAuthStore";
 import CustomButton from "../../components/ui/buttons/CustomButton";
 import CustomInput from "../../components/ui/inputs/CustomInput";
@@ -150,15 +151,23 @@ export default function LoginScreen({
 
     try {
       setIsRegisterLoading(true);
-      await sendOtp({ email: trimmedEmail, purpose: "REGISTER" });
+      await registerUser({
+        name: trimmedFullName,
+        email: trimmedEmail,
+        password: trimmedPassword,
+        role: "USER",
+      });
       setRegisterStep(2);
-      Alert.alert("Thành công", "Mã OTP đã được gửi đến email của bạn.");
+      Alert.alert(
+        "Thành công",
+        "Tài khoản đã được tạo. Mã OTP đã được gửi đến email của bạn.",
+      );
     } catch (error) {
       const message = getApiErrorMessage(
         error,
-        "Không thể gửi OTP. Vui lòng thử lại.",
+        "Không thể tạo tài khoản hoặc gửi OTP. Vui lòng thử lại.",
       );
-      Alert.alert("Gửi OTP thất bại", message);
+      Alert.alert("Đăng ký thất bại", message);
     } finally {
       setIsRegisterLoading(false);
     }
@@ -177,11 +186,11 @@ export default function LoginScreen({
 
     try {
       setIsRegisterLoading(true);
-      await registerApi({
-        email: trimmedEmail,
-        password: trimmedPassword,
-        fullName: trimmedFullName,
-        otp: trimmedOtp,
+      await AuthControllerService.verifyOtp({
+        requestBody: {
+          email: trimmedEmail,
+          otp: trimmedOtp,
+        },
       });
 
       Alert.alert("Thành công", "Đăng ký thành công. Vui lòng đăng nhập.", [
@@ -202,6 +211,31 @@ export default function LoginScreen({
         "Đăng ký thất bại. Vui lòng thử lại.",
       );
       Alert.alert("Lỗi đăng ký", message);
+    } finally {
+      setIsRegisterLoading(false);
+    }
+  };
+
+  const handleResendRegisterOtp = async (): Promise<void> => {
+    const trimmedEmail = registerEmail.trim().toLowerCase();
+
+    if (!trimmedEmail) {
+      Alert.alert("Thiếu email", "Vui lòng nhập email đăng ký.");
+      return;
+    }
+
+    try {
+      setIsRegisterLoading(true);
+      await AuthControllerService.resendOtp({
+        requestBody: { email: trimmedEmail },
+      });
+      Alert.alert("Đã gửi lại", "Mã OTP mới đã được gửi tới email của bạn.");
+    } catch (error) {
+      const message = getApiErrorMessage(
+        error,
+        "Không thể gửi lại OTP. Vui lòng thử lại.",
+      );
+      Alert.alert("Gửi lại OTP thất bại", message);
     } finally {
       setIsRegisterLoading(false);
     }
@@ -460,6 +494,17 @@ export default function LoginScreen({
                         isLoading={isRegisterLoading}
                         className="rounded-2xl"
                       />
+                      <Pressable
+                        className="self-center"
+                        onPress={() => {
+                          void handleResendRegisterOtp();
+                        }}
+                        disabled={isRegisterLoading}
+                      >
+                        <Text className="px-1 py-2 text-xs font-bold text-primary">
+                          Gửi lại OTP
+                        </Text>
+                      </Pressable>
                       <Pressable
                         className="self-center"
                         onPress={() => setRegisterStep(1)}

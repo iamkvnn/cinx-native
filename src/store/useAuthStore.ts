@@ -2,11 +2,37 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { create } from "zustand";
 
-import { fetchCurrentUser, login as loginApi } from "../services/api/authApi";
+import env from "../env";
+import { AuthControllerService } from "../services/api/AuthControllerService";
+import { UserControllerService } from "../services/api/UserControllerService";
 import type { AuthUser, LoginResult } from "../types/auth";
 
-const ACCESS_TOKEN_STORAGE_KEY = "accessToken";
-const REFRESH_TOKEN_STORAGE_KEY = "refreshToken";
+const ACCESS_TOKEN_STORAGE_KEY = env.accessToken;
+const REFRESH_TOKEN_STORAGE_KEY = env.refreshToken;
+
+const mapUser = (user: AuthUser | null | undefined): AuthUser | null => {
+  if (!user) {
+    return null;
+  }
+
+  return {
+    ...user,
+    id: user.userId ?? user.id,
+    fullName: user.name ?? user.fullName,
+    avatar: user.avatarUrl ?? user.avatar,
+    rewardPoints: user.xp ?? user.rewardPoints,
+    profile: {
+      fullName: user.name ?? user.fullName,
+      email: user.email,
+      avatar: user.avatarUrl ?? user.avatar,
+    },
+  };
+};
+
+const fetchCurrentUser = async (): Promise<AuthUser | null> => {
+  const response = await UserControllerService.getCurrentUser();
+  return mapUser((response.data as AuthUser | undefined) ?? null);
+};
 
 const persistTokens = async (
   accessToken: string,
@@ -49,7 +75,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<LoginResult>;
   hydrateAuth: () => Promise<void>;
   clearError: () => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -96,7 +122,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const tokens = await loginApi({ email, password });
+      const response = await AuthControllerService.login({
+        requestBody: { email, password },
+      });
+      const tokens = response.data;
+
+      if (!tokens?.accessToken) {
+        throw new Error("Không nhận được access token.");
+      }
 
       await persistTokens(tokens.accessToken, tokens.refreshToken);
 
