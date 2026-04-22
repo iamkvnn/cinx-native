@@ -163,7 +163,8 @@ export default function CartScreen(): ReactElement {
   });
 
   const cancelOrderMutation = useMutation({
-    mutationFn: async (orderId: string) => OrderControllerService.cancelOrder({ orderId }),
+    mutationFn: async (orderId: string) =>
+      OrderControllerService.cancelOrder({ orderId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["cart"] });
@@ -171,14 +172,18 @@ export default function CartScreen(): ReactElement {
     },
     onError: () => {
       showToast("Không thể hủy đơn hàng.");
-    }
+    },
   });
 
   const handleCancelPendingOrder = (): void => {
     if (!pendingOrder?.id) return;
     Alert.alert("Xác nhận", "Bạn có chắc chắn muốn hủy đơn hàng chờ không?", [
       { text: "Không", style: "cancel" },
-      { text: "Hủy đơn", style: "destructive", onPress: () => cancelOrderMutation.mutate(String(pendingOrder.id)) }
+      {
+        text: "Hủy đơn",
+        style: "destructive",
+        onPress: () => cancelOrderMutation.mutate(String(pendingOrder.id)),
+      },
     ]);
   };
 
@@ -404,39 +409,44 @@ export default function CartScreen(): ReactElement {
                   Bạn đang có đơn chờ thanh toán
                 </Text>
                 <Text className="mt-2 text-sm font-medium leading-6 text-amber-700/90">
-                  Bạn hiện có đơn hàng chưa thanh toán. Bạn có thể tiếp tục thanh toán hoặc hủy đơn để mua lại.
+                  Bạn hiện có đơn hàng chưa thanh toán. Bạn có thể tiếp tục
+                  thanh toán hoặc hủy đơn để mua lại.
                 </Text>
                 <Pressable
                   onPress={handleCancelPendingOrder}
                   disabled={cancelOrderMutation.isPending}
                   className={`mt-4 self-start rounded-xl px-4 py-2 ${cancelOrderMutation.isPending ? "bg-red-50" : "bg-red-100"}`}
                 >
-                  <Text className={`text-xs font-bold ${cancelOrderMutation.isPending ? "text-red-400" : "text-red-700"}`}>
-                    {cancelOrderMutation.isPending ? "Đang hủy..." : "Hủy đơn chờ"}
+                  <Text
+                    className={`text-xs font-bold ${cancelOrderMutation.isPending ? "text-red-400" : "text-red-700"}`}
+                  >
+                    {cancelOrderMutation.isPending
+                      ? "Đang hủy..."
+                      : "Hủy đơn chờ"}
                   </Text>
                 </Pressable>
               </View>
             ) : null}
 
-            {cartItems.length > 0 ? (
-              cartItems.map((item) => (
-                <CartItemCard
-                  key={item.cartItemId}
-                  item={item}
-                  onPress={handlePressCourse}
-                  onRemove={handleRemoveCartItem}
-                  onSwipeableWillOpen={handleSwipeableWillOpen}
-                  setSwipeableRef={(instance) => {
-                    if (instance) {
-                      swipeableRefs.current[item.cartItemId] = instance;
-                      return;
-                    }
+            {cartItems.length > 0
+              ? cartItems.map((item) => (
+                  <CartItemCard
+                    key={item.cartItemId}
+                    item={item}
+                    onPress={handlePressCourse}
+                    onRemove={handleRemoveCartItem}
+                    onSwipeableWillOpen={handleSwipeableWillOpen}
+                    setSwipeableRef={(instance) => {
+                      if (instance) {
+                        swipeableRefs.current[item.cartItemId] = instance;
+                        return;
+                      }
 
-                    delete swipeableRefs.current[item.cartItemId];
-                  }}
-                />
-              ))
-            ) : null}
+                      delete swipeableRefs.current[item.cartItemId];
+                    }}
+                  />
+                ))
+              : null}
 
             <View
               className="mt-2 overflow-hidden rounded-[28px] border border-white/75 bg-white/70 p-5"

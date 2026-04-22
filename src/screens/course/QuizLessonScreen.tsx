@@ -30,6 +30,7 @@ import { LearningProgressControllerService } from "../../services/api/LearningPr
 import { useAuthStore } from "../../store/useAuthStore";
 import {
   extractCompletedLessonIds,
+  findPreviousLesson,
   findNextLesson,
   getLessonRouteName,
 } from "../../utils/lessonFlow";
@@ -108,7 +109,23 @@ export default function QuizLessonScreen({
     return findNextLesson(courseQuery.data, lessonId);
   }, [courseQuery.data, lessonId]);
 
+  const previousLesson = useMemo(() => {
+    return findPreviousLesson(courseQuery.data, lessonId);
+  }, [courseQuery.data, lessonId]);
+
   const nextLessonRoute = getLessonRouteName(nextLesson?.lessonType);
+  const previousLessonRoute = getLessonRouteName(previousLesson?.lessonType);
+
+  const goToCourseCurriculum = (): void => {
+    if (!hasCourseId) {
+      return;
+    }
+
+    navigation.replace("CourseDetail", {
+      courseId,
+      initialTab: "curriculum",
+    });
+  };
 
   const getApiErrorMessage = (error: unknown, fallback: string): string => {
     if (axios.isAxiosError(error)) {
@@ -383,31 +400,75 @@ export default function QuizLessonScreen({
 
     switch (nextLessonRoute) {
       case "VideoLesson":
-        navigation.navigate("VideoLesson", {
+        navigation.replace("VideoLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
         });
         break;
       case "ArticleLesson":
-        navigation.navigate("ArticleLesson", {
+        navigation.replace("ArticleLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
         });
         break;
       case "QuizLesson":
-        navigation.navigate("QuizLesson", {
+        navigation.replace("QuizLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
         });
         break;
       case "AssignmentLesson":
-        navigation.navigate("AssignmentLesson", {
+        navigation.replace("AssignmentLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
+        });
+        break;
+    }
+  };
+
+  const handlePreviousLesson = (): void => {
+    if (!previousLesson || !previousLessonRoute) {
+      return;
+    }
+
+    const previousLessonId = String(previousLesson.id ?? "").trim();
+    if (!previousLessonId) {
+      return;
+    }
+
+    const previousLessonTitle = previousLesson.title ?? "Bài học";
+
+    switch (previousLessonRoute) {
+      case "VideoLesson":
+        navigation.replace("VideoLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
+        });
+        break;
+      case "ArticleLesson":
+        navigation.replace("ArticleLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
+        });
+        break;
+      case "QuizLesson":
+        navigation.replace("QuizLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
+        });
+        break;
+      case "AssignmentLesson":
+        navigation.replace("AssignmentLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
         });
         break;
     }
@@ -660,15 +721,45 @@ export default function QuizLessonScreen({
         ) : null}
       </ScrollView>
 
-      {isLessonCompleted && nextLesson && nextLessonRoute ? (
+      {previousLesson && previousLessonRoute ? (
         <View className="px-4 pb-4">
-          <Pressable
-            className="h-12 flex-row items-center justify-center gap-2 rounded-2xl bg-violet-600"
-            onPress={handleNextLesson}
-          >
-            <Text className="text-sm font-bold text-white">Bài tiếp theo</Text>
-            <Text className="text-sm font-bold text-white">→</Text>
-          </Pressable>
+          <View className="flex-row items-center justify-between">
+            <Pressable
+              className="h-11 flex-row items-center gap-1 rounded-full bg-slate-900 px-4"
+              onPress={handlePreviousLesson}
+            >
+              <Text className="text-xs font-bold text-white">←</Text>
+              <Text className="text-xs font-bold text-white">Bài trước</Text>
+            </Pressable>
+
+            {isLessonCompleted && nextLesson && nextLessonRoute ? (
+              <Pressable
+                className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
+                onPress={handleNextLesson}
+              >
+                <Text className="text-xs font-bold text-white">
+                  Bài tiếp theo
+                </Text>
+                <Text className="text-xs font-bold text-white">→</Text>
+              </Pressable>
+            ) : (
+              <View />
+            )}
+          </View>
+        </View>
+      ) : isLessonCompleted && nextLesson && nextLessonRoute ? (
+        <View className="px-4 pb-4">
+          <View className="flex-row items-center justify-end">
+            <Pressable
+              className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
+              onPress={handleNextLesson}
+            >
+              <Text className="text-xs font-bold text-white">
+                Bài tiếp theo
+              </Text>
+              <Text className="text-xs font-bold text-white">→</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
     </SafeAreaView>

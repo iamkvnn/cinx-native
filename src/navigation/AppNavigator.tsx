@@ -56,7 +56,10 @@ export type RootStackParamList = {
   CourseManagement: { courseId: string };
   CurriculumBuilder: { courseId: string };
   CourseStudentsProgress: { courseId: string; courseTitle: string };
-  CourseDetail: { courseId?: string };
+  CourseDetail: {
+    courseId?: string;
+    initialTab?: "about" | "curriculum" | "reviews";
+  };
   VideoLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
   ArticleLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
   QuizLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
@@ -437,6 +440,8 @@ export default function AppNavigator(): ReactElement {
             title: "Video bài học",
             headerBackTitle: "",
             headerBackButtonDisplayMode: "minimal",
+            headerBackButtonMenuEnabled: false,
+            animationTypeForReplace: "push",
             headerTintColor: "#2563eb",
           }}
         />
@@ -448,6 +453,8 @@ export default function AppNavigator(): ReactElement {
             title: "Bài nội dung",
             headerBackTitle: "",
             headerBackButtonDisplayMode: "minimal",
+            headerBackButtonMenuEnabled: false,
+            animationTypeForReplace: "push",
             headerTintColor: "#2563eb",
           }}
         />
@@ -459,6 +466,8 @@ export default function AppNavigator(): ReactElement {
             title: "Bài quiz",
             headerBackTitle: "",
             headerBackButtonDisplayMode: "minimal",
+            headerBackButtonMenuEnabled: false,
+            animationTypeForReplace: "push",
             headerTintColor: "#2563eb",
           }}
         />
@@ -470,6 +479,8 @@ export default function AppNavigator(): ReactElement {
             title: "Assignment",
             headerBackTitle: "",
             headerBackButtonDisplayMode: "minimal",
+            headerBackButtonMenuEnabled: false,
+            animationTypeForReplace: "push",
             headerTintColor: "#2563eb",
           }}
         />

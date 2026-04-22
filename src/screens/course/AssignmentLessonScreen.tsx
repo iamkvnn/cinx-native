@@ -23,12 +23,13 @@ import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { CourseControllerService } from "../../services/api/CourseControllerService";
 import { AssignmentControllerService } from "../../services/api/AssignmentControllerService";
 import { AssignmentLessonControllerService } from "../../services/api/AssignmentLessonControllerService";
-import { PresignedUrlControllerService } from "../../services/api/PresignedUrlControllerService";
 import { LearningProgressControllerService } from "../../services/api/LearningProgressControllerService";
 import { useAuthStore } from "../../store/useAuthStore";
 import type { AssignmentSubmissionResponse } from "@/types";
+import { uploadLearningFileToS3 } from "../../utils/uploadToS3";
 import {
   extractCompletedLessonIds,
+  findPreviousLesson,
   findNextLesson,
   getLessonRouteName,
 } from "../../utils/lessonFlow";
@@ -50,12 +51,15 @@ type PendingAttachment = {
 export default function AssignmentLessonScreen({
   route,
 }: AssignmentLessonScreenProps): ReactElement {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const queryClient = useQueryClient();
   const currentUserId = useAuthStore((state) => state.user?.id);
   const courseId = String(route.params?.courseId ?? "").trim();
   const hasCourseId = courseId.length > 0;
   const lessonId = String(route.params?.lessonId ?? "").trim();
+  const assignmentId = lessonId;
+  const hasAssignmentId = assignmentId.length > 0;
   const lessonTitle = route.params?.lessonTitle ?? "Assignment";
   const [content, setContent] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
@@ -91,7 +95,23 @@ export default function AssignmentLessonScreen({
     return findNextLesson(courseQuery.data, lessonId);
   }, [courseQuery.data, lessonId]);
 
+  const previousLesson = useMemo(() => {
+    return findPreviousLesson(courseQuery.data, lessonId);
+  }, [courseQuery.data, lessonId]);
+
   const nextLessonRoute = getLessonRouteName(nextLesson?.lessonType);
+  const previousLessonRoute = getLessonRouteName(previousLesson?.lessonType);
+
+  const goToCourseCurriculum = (): void => {
+    if (!hasCourseId) {
+      return;
+    }
+
+    navigation.replace("CourseDetail", {
+      courseId,
+      initialTab: "curriculum",
+    });
+  };
 
   const getApiErrorMessage = (error: unknown, fallback: string): string => {
     if (axios.isAxiosError(error)) {
@@ -109,20 +129,32 @@ export default function AssignmentLessonScreen({
     return fallback;
   };
 
+  const isNotFoundError = (error: unknown): boolean => {
+    return axios.isAxiosError(error) && error.response?.status === 404;
+  };
+
   const assignmentQuery = useQuery({
     queryKey: ["assignment-lesson", lessonId],
     queryFn: () =>
       AssignmentLessonControllerService.getAssigmentByLessonId({ lessonId }),
-    enabled: lessonId.length > 0,
+    enabled: hasAssignmentId,
   });
 
   const submissionQuery = useQuery({
     queryKey: ["assignment-submission", lessonId],
-    queryFn: () =>
-      AssignmentControllerService.getAssignmentSubmission({
-        assignmentId: lessonId,
-      }),
-    enabled: lessonId.length > 0,
+    queryFn: async () => {
+      try {
+        return await AssignmentControllerService.getAssignmentSubmission({
+          assignmentId,
+        });
+      } catch (error) {
+        if (isNotFoundError(error)) {
+          return null;
+        }
+        throw error;
+      }
+    },
+    enabled: hasAssignmentId,
     retry: false,
   });
 
@@ -130,11 +162,11 @@ export default function AssignmentLessonScreen({
     queryKey: ["assignment-submission-history", lessonId],
     queryFn: () =>
       AssignmentControllerService.getAssignmentSubmissions({
-        assignmentId: lessonId,
+        assignmentId,
         page: 1,
         size: 50,
       }),
-    enabled: lessonId.length > 0,
+    enabled: hasAssignmentId,
     retry: false,
   });
 
@@ -166,7 +198,7 @@ export default function AssignmentLessonScreen({
   const submitMutation = useMutation({
     mutationFn: async () => {
       await AssignmentControllerService.submitAssignment({
-        assignmentId: lessonId,
+        assignmentId,
         requestBody: {
           content,
           attachments: attachments.map<AttachmentRequest>((item) => ({
@@ -235,37 +267,17 @@ export default function AssignmentLessonScreen({
       const fileType = asset.mimeType || "application/octet-stream";
       const fileSize = Number(asset.size ?? 0);
 
-      const presigned =
-        await PresignedUrlControllerService.getLearningPresignedUrl({
-          fileName,
-          contentType: fileType,
-        });
-
-      const fileKey = String(presigned.data?.fileKey ?? "");
-      const presignedUrl = String(presigned.data?.presignedUrl ?? "");
-
-      if (!fileKey || !presignedUrl) {
-        throw new Error("Không lấy được đường dẫn upload file.");
-      }
-
-      const blob = await (await fetch(asset.uri)).blob();
-      const uploadResponse = await fetch(presignedUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": fileType,
-        },
-        body: blob,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error("Upload file thất bại.");
-      }
-
-      return {
-        id: `${fileKey}-${Date.now()}`,
-        fileKey,
+      const uploaded = await uploadLearningFileToS3(
+        asset.uri,
         fileName,
         fileType,
+      );
+
+      return {
+        id: `${uploaded.fileKey}-${Date.now()}`,
+        fileKey: uploaded.fileKey,
+        fileName: uploaded.fileName,
+        fileType: uploaded.fileType,
         fileSize,
       } satisfies PendingAttachment;
     },
@@ -276,6 +288,11 @@ export default function AssignmentLessonScreen({
 
   const handlePickAttachment = async (): Promise<void> => {
     try {
+      if (!hasAssignmentId) {
+        Alert.alert("Lỗi", "Không tìm thấy assignment để nộp.");
+        return;
+      }
+
       const result = await DocumentPicker.getDocumentAsync({
         type: "*/*",
         multiple: true,
@@ -331,8 +348,12 @@ export default function AssignmentLessonScreen({
   };
 
   const canSubmit = useMemo(() => {
+    if (!hasAssignmentId) {
+      return false;
+    }
+
     return content.trim().length > 0 || attachments.length > 0;
-  }, [attachments.length, content]);
+  }, [attachments.length, content, hasAssignmentId]);
 
   const canResubmit = Boolean(currentSubmissionId);
 
@@ -350,31 +371,75 @@ export default function AssignmentLessonScreen({
 
     switch (nextLessonRoute) {
       case "VideoLesson":
-        navigation.navigate("VideoLesson", {
+        navigation.replace("VideoLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
         });
         break;
       case "ArticleLesson":
-        navigation.navigate("ArticleLesson", {
+        navigation.replace("ArticleLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
         });
         break;
       case "QuizLesson":
-        navigation.navigate("QuizLesson", {
+        navigation.replace("QuizLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
         });
         break;
       case "AssignmentLesson":
-        navigation.navigate("AssignmentLesson", {
+        navigation.replace("AssignmentLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
+        });
+        break;
+    }
+  };
+
+  const handlePreviousLesson = (): void => {
+    if (!previousLesson || !previousLessonRoute) {
+      return;
+    }
+
+    const previousLessonId = String(previousLesson.id ?? "").trim();
+    if (!previousLessonId) {
+      return;
+    }
+
+    const previousLessonTitle = previousLesson.title ?? "Bài học";
+
+    switch (previousLessonRoute) {
+      case "VideoLesson":
+        navigation.replace("VideoLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
+        });
+        break;
+      case "ArticleLesson":
+        navigation.replace("ArticleLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
+        });
+        break;
+      case "QuizLesson":
+        navigation.replace("QuizLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
+        });
+        break;
+      case "AssignmentLesson":
+        navigation.replace("AssignmentLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
         });
         break;
     }
@@ -587,15 +652,45 @@ export default function AssignmentLessonScreen({
         </View>
       </ScrollView>
 
-      {isLessonCompleted && nextLesson && nextLessonRoute ? (
+      {previousLesson && previousLessonRoute ? (
         <View className="px-4 pb-4">
-          <Pressable
-            className="h-12 flex-row items-center justify-center gap-2 rounded-2xl bg-violet-600"
-            onPress={handleNextLesson}
-          >
-            <Text className="text-sm font-bold text-white">Bài tiếp theo</Text>
-            <Text className="text-sm font-bold text-white">→</Text>
-          </Pressable>
+          <View className="flex-row items-center justify-between">
+            <Pressable
+              className="h-11 flex-row items-center gap-1 rounded-full bg-slate-900 px-4"
+              onPress={handlePreviousLesson}
+            >
+              <Text className="text-xs font-bold text-white">←</Text>
+              <Text className="text-xs font-bold text-white">Bài trước</Text>
+            </Pressable>
+
+            {isLessonCompleted && nextLesson && nextLessonRoute ? (
+              <Pressable
+                className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
+                onPress={handleNextLesson}
+              >
+                <Text className="text-xs font-bold text-white">
+                  Bài tiếp theo
+                </Text>
+                <Text className="text-xs font-bold text-white">→</Text>
+              </Pressable>
+            ) : (
+              <View />
+            )}
+          </View>
+        </View>
+      ) : isLessonCompleted && nextLesson && nextLessonRoute ? (
+        <View className="px-4 pb-4">
+          <View className="flex-row items-center justify-end">
+            <Pressable
+              className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
+              onPress={handleNextLesson}
+            >
+              <Text className="text-xs font-bold text-white">
+                Bài tiếp theo
+              </Text>
+              <Text className="text-xs font-bold text-white">→</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
     </SafeAreaView>

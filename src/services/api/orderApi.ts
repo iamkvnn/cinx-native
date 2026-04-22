@@ -90,12 +90,12 @@ const mapOrder = (order: OrderDetailResponse): OrderApi => {
     backendStatus === "CANCELLED"
       ? "CANCELLED"
       : paymentStatus === "PAID"
-      ? "COMPLETED"
-      : paymentStatus === "PROCESSING"
-        ? "PENDING"
-        : paymentStatus === "REFUNDED"
-          ? "CANCELLED"
-          : "PENDING";
+        ? "COMPLETED"
+        : paymentStatus === "PROCESSING"
+          ? "PENDING"
+          : paymentStatus === "REFUNDED"
+            ? "CANCELLED"
+            : "PENDING";
 
   const items = mapOrderItems(order.items);
 
@@ -189,8 +189,10 @@ export const checkoutOrder = async ({
 };
 
 const buildCartItemsFromOrder = (order: OrderApi): CartItemDto[] => {
-  const sourceItems = (order.details ?? order.orderItems ?? order.items ?? []) as
-    OrderDetailItemApi[];
+  const sourceItems = (order.details ??
+    order.orderItems ??
+    order.items ??
+    []) as OrderDetailItemApi[];
   const cartItems: CartItemDto[] = [];
 
   sourceItems.forEach((item) => {

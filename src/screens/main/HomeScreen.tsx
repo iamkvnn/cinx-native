@@ -238,12 +238,15 @@ function GoalProgressRing({
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const normalizedProgress = Math.max(0, Math.min(100, progress));
-  const dashOffset =
-    circumference - (normalizedProgress / 100) * circumference;
+  const dashOffset = circumference - (normalizedProgress / 100) * circumference;
 
   return (
     <View className="mb-2 h-[72px] w-[72px] items-center justify-center">
-      <Svg width={size} height={size} style={{ transform: [{ rotate: "-90deg" }] }}>
+      <Svg
+        width={size}
+        height={size}
+        style={{ transform: [{ rotate: "-90deg" }] }}
+      >
         <Circle
           cx={size / 2}
           cy={size / 2}
@@ -533,12 +536,12 @@ export default function HomeScreen(): ReactElement {
         <Text className="mb-4 text-lg font-extrabold text-slate-800">
           Mục tiêu hôm nay
         </Text>
-        <View
-          style={styles.glassCard}
-          className="mb-8 rounded-[24px] p-4"
-        >
+        <View style={styles.glassCard} className="mb-8 rounded-[24px] p-4">
           <View className="flex-row items-center gap-4">
-            <GoalProgressRing progress={goalProgressPercent} achievedXp={achievedXp} />
+            <GoalProgressRing
+              progress={goalProgressPercent}
+              achievedXp={achievedXp}
+            />
 
             <View className="flex-1">
               <Text className="text-xs font-bold text-slate-500">
@@ -550,7 +553,11 @@ export default function HomeScreen(): ReactElement {
 
               <View className="mt-3 flex-row items-center gap-2">
                 <Ionicons
-                  name={todayGoal?.isCompleted ? "checkmark-circle" : "ellipse-outline"}
+                  name={
+                    todayGoal?.isCompleted
+                      ? "checkmark-circle"
+                      : "ellipse-outline"
+                  }
                   size={14}
                   color={todayGoal?.isCompleted ? "#10b981" : "#8b5cf6"}
                 />

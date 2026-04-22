@@ -3,7 +3,7 @@ import { BlurView } from "expo-blur";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import { useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -39,7 +39,10 @@ import { ReviewControllerService } from "../../services/api/ReviewControllerServ
 import { LearningProgressControllerService } from "../../services/api/LearningProgressControllerService";
 import { useAuthStore } from "../../store/useAuthStore";
 import { extractCompletedLessonIds } from "../../utils/lessonFlow";
-import { formatPriceK as formatPriceKShared, resolvePricing } from "../../utils/pricing";
+import {
+  formatPriceK as formatPriceKShared,
+  resolvePricing,
+} from "../../utils/pricing";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 
 type CourseDetailScreenProps = NativeStackScreenProps<
@@ -205,13 +208,22 @@ export default function CourseDetailScreen({
   const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   const scrollY = useState(new Animated.Value(0))[0];
-  const [activeTab, setActiveTab] = useState<CourseTab>("about");
+  const requestedInitialTab = route.params?.initialTab;
+  const [activeTab, setActiveTab] = useState<CourseTab>(
+    requestedInitialTab ?? "about",
+  );
   const [isAddingToCart, setIsAddingToCart] = useState(false);
   const [isBuyingNow, setIsBuyingNow] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   const courseId = String(route.params?.courseId ?? "").trim();
   const hasValidCourseId = courseId.length > 0;
+
+  useEffect(() => {
+    if (requestedInitialTab) {
+      setActiveTab(requestedInitialTab);
+    }
+  }, [requestedInitialTab]);
 
   const courseQuery = useQuery({
     queryKey: ["course-detail", courseId],
@@ -266,7 +278,9 @@ export default function CourseDetailScreen({
   const instructorName = course?.instructor?.name ?? "Giảng viên";
 
   const ratingLabel = course?.rating ? course.rating.toFixed(1) : "0.0";
-  const ratingCountLabel = reviewsQuery.data?.length ? `${reviewsQuery.data.length} đánh giá` : "0 đánh giá";
+  const ratingCountLabel = reviewsQuery.data?.length
+    ? `${reviewsQuery.data.length} đánh giá`
+    : "0 đánh giá";
   const learnersLabel = `${
     Number(course?.enrollmentCount ?? 0).toLocaleString("vi-VN") || "0"
   } học viên`;

@@ -23,6 +23,7 @@ import { VideoTrackingControllerService } from "../../services/api/VideoTracking
 import { LearningProgressControllerService } from "../../services/api/LearningProgressControllerService";
 import {
   extractCompletedLessonIds,
+  findPreviousLesson,
   findNextLesson,
   getLessonRouteName,
 } from "../../utils/lessonFlow";
@@ -103,7 +104,23 @@ export default function VideoLessonScreen({
     return findNextLesson(courseQuery.data, lessonId);
   }, [courseQuery.data, lessonId]);
 
+  const previousLesson = useMemo(() => {
+    return findPreviousLesson(courseQuery.data, lessonId);
+  }, [courseQuery.data, lessonId]);
+
   const nextLessonRoute = getLessonRouteName(nextLesson?.lessonType);
+  const previousLessonRoute = getLessonRouteName(previousLesson?.lessonType);
+
+  const goToCourseCurriculum = (): void => {
+    if (!hasCourseId) {
+      return;
+    }
+
+    navigation.replace("CourseDetail", {
+      courseId,
+      initialTab: "curriculum",
+    });
+  };
 
   useEffect(() => {
     const fromApi = Number(trackingQuery.data?.data?.currentPosition ?? 0);
@@ -318,31 +335,75 @@ export default function VideoLessonScreen({
 
     switch (nextLessonRoute) {
       case "VideoLesson":
-        navigation.navigate("VideoLesson", {
+        navigation.replace("VideoLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
         });
         break;
       case "ArticleLesson":
-        navigation.navigate("ArticleLesson", {
+        navigation.replace("ArticleLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
         });
         break;
       case "QuizLesson":
-        navigation.navigate("QuizLesson", {
+        navigation.replace("QuizLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
         });
         break;
       case "AssignmentLesson":
-        navigation.navigate("AssignmentLesson", {
+        navigation.replace("AssignmentLesson", {
           lessonId: nextLessonId,
           courseId,
           lessonTitle: nextLessonTitle,
+        });
+        break;
+    }
+  };
+
+  const handlePreviousLesson = (): void => {
+    if (!previousLesson || !previousLessonRoute) {
+      return;
+    }
+
+    const previousLessonId = String(previousLesson.id ?? "").trim();
+    if (!previousLessonId) {
+      return;
+    }
+
+    const previousLessonTitle = previousLesson.title ?? "Bài học";
+
+    switch (previousLessonRoute) {
+      case "VideoLesson":
+        navigation.replace("VideoLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
+        });
+        break;
+      case "ArticleLesson":
+        navigation.replace("ArticleLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
+        });
+        break;
+      case "QuizLesson":
+        navigation.replace("QuizLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
+        });
+        break;
+      case "AssignmentLesson":
+        navigation.replace("AssignmentLesson", {
+          lessonId: previousLessonId,
+          courseId,
+          lessonTitle: previousLessonTitle,
         });
         break;
     }
@@ -408,17 +469,6 @@ export default function VideoLessonScreen({
           </View>
         ) : null}
 
-        {hasPlayableVideoUrl ? (
-          <View className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
-            <Text className="text-[11px] font-semibold text-slate-500">
-              Nguồn video đang phát
-            </Text>
-            <Text className="mt-1 text-[11px] font-medium text-slate-700">
-              {videoUrl}
-            </Text>
-          </View>
-        ) : null}
-
         {videoPlaybackError ? (
           <View className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
             <Text className="text-xs font-semibold text-red-700">
@@ -449,15 +499,45 @@ export default function VideoLessonScreen({
         </View>
       </ScrollView>
 
-      {isLessonCompleted && nextLesson && nextLessonRoute ? (
+      {previousLesson && previousLessonRoute ? (
         <View className="px-4 pb-4">
-          <Pressable
-            className="h-12 flex-row items-center justify-center gap-2 rounded-2xl bg-violet-600"
-            onPress={handleNextLesson}
-          >
-            <Text className="text-sm font-bold text-white">Bài tiếp theo</Text>
-            <Text className="text-sm font-bold text-white">→</Text>
-          </Pressable>
+          <View className="flex-row items-center justify-between">
+            <Pressable
+              className="h-11 flex-row items-center gap-1 rounded-full bg-slate-900 px-4"
+              onPress={handlePreviousLesson}
+            >
+              <Text className="text-xs font-bold text-white">←</Text>
+              <Text className="text-xs font-bold text-white">Bài trước</Text>
+            </Pressable>
+
+            {isLessonCompleted && nextLesson && nextLessonRoute ? (
+              <Pressable
+                className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
+                onPress={handleNextLesson}
+              >
+                <Text className="text-xs font-bold text-white">
+                  Bài tiếp theo
+                </Text>
+                <Text className="text-xs font-bold text-white">→</Text>
+              </Pressable>
+            ) : (
+              <View />
+            )}
+          </View>
+        </View>
+      ) : isLessonCompleted && nextLesson && nextLessonRoute ? (
+        <View className="px-4 pb-4">
+          <View className="flex-row items-center justify-end">
+            <Pressable
+              className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
+              onPress={handleNextLesson}
+            >
+              <Text className="text-xs font-bold text-white">
+                Bài tiếp theo
+              </Text>
+              <Text className="text-xs font-bold text-white">→</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
     </SafeAreaView>

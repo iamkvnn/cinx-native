@@ -46,6 +46,28 @@ export const findNextLesson = (
   return lessons[currentIndex + 1] ?? null;
 };
 
+export const findPreviousLesson = (
+  course?: CourseDetailResponse | null,
+  currentLessonId?: string,
+): LessonResponse | null => {
+  const lessonId = String(currentLessonId ?? "").trim();
+
+  if (!lessonId) {
+    return null;
+  }
+
+  const lessons = flattenCourseLessons(course);
+  const currentIndex = lessons.findIndex(
+    (lesson) => String(lesson.id ?? "") === lessonId,
+  );
+
+  if (currentIndex <= 0) {
+    return null;
+  }
+
+  return lessons[currentIndex - 1] ?? null;
+};
+
 export const getLessonRouteName = (
   lessonType?: string,
 ): LessonRouteName | null => {

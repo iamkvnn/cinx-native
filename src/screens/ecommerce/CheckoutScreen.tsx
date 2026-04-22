@@ -142,7 +142,9 @@ export default function CheckoutScreen({
 
   const orderCode = `EDUF-${orderId.padStart(6, "0")}`;
   const isOrderPending = isPendingOrderStatus(orderQuery.data?.status);
-  const appliedVoucherCode = String(orderQuery.data?.voucher?.code ?? "").trim();
+  const appliedVoucherCode = String(
+    orderQuery.data?.voucher?.code ?? "",
+  ).trim();
   const voucherDiscountAmount = Math.max(
     0,
     Number(orderQuery.data?.voucher?.discountAmount ?? 0),
@@ -162,10 +164,14 @@ export default function CheckoutScreen({
   const rewardPointsDisabled = appliedVoucherCode.length > 0;
   const rewardPoints = Number(user?.rewardPoints ?? 0);
   const maxDiscount = rewardPoints * 1000;
-  const rewardPointsDiscount = useRewardPoints && !rewardPointsDisabled
-    ? Math.min(maxDiscount, subtotalAfterServerDiscount)
-    : 0;
-  const finalPrice = Math.max(0, subtotalAfterServerDiscount - rewardPointsDiscount);
+  const rewardPointsDiscount =
+    useRewardPoints && !rewardPointsDisabled
+      ? Math.min(maxDiscount, subtotalAfterServerDiscount)
+      : 0;
+  const finalPrice = Math.max(
+    0,
+    subtotalAfterServerDiscount - rewardPointsDiscount,
+  );
 
   useEffect(() => {
     setVoucherCodeInput(appliedVoucherCode);
@@ -322,7 +328,10 @@ export default function CheckoutScreen({
       return;
     }
 
-    if (appliedVoucherCode && appliedVoucherCode.toLowerCase() === code.toLowerCase()) {
+    if (
+      appliedVoucherCode &&
+      appliedVoucherCode.toLowerCase() === code.toLowerCase()
+    ) {
       setVoucherHint("Voucher này đã được áp dụng.");
       return;
     }
@@ -350,8 +359,12 @@ export default function CheckoutScreen({
       }
 
       const now = Date.now();
-      const validFrom = voucher.validFrom ? new Date(voucher.validFrom).getTime() : null;
-      const validTo = voucher.validTo ? new Date(voucher.validTo).getTime() : null;
+      const validFrom = voucher.validFrom
+        ? new Date(voucher.validFrom).getTime()
+        : null;
+      const validTo = voucher.validTo
+        ? new Date(voucher.validTo).getTime()
+        : null;
 
       if (validFrom && Number.isFinite(validFrom) && now < validFrom) {
         setVoucherHint("Voucher chưa đến thời gian áp dụng.");
@@ -380,7 +393,12 @@ export default function CheckoutScreen({
   };
 
   const handleRemoveVoucher = async (): Promise<void> => {
-    if (!isOrderPending || !appliedVoucherCode || isApplyingVoucher || isRemovingVoucher) {
+    if (
+      !isOrderPending ||
+      !appliedVoucherCode ||
+      isApplyingVoucher ||
+      isRemovingVoucher
+    ) {
       return;
     }
 
@@ -409,37 +427,33 @@ export default function CheckoutScreen({
       return;
     }
 
-    Alert.alert(
-      "Hủy đơn hàng",
-      "Bạn có chắc muốn hủy đơn hàng này?",
-      [
-        {
-          text: "Không",
-          style: "cancel",
+    Alert.alert("Hủy đơn hàng", "Bạn có chắc muốn hủy đơn hàng này?", [
+      {
+        text: "Không",
+        style: "cancel",
+      },
+      {
+        text: "Hủy đơn",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            try {
+              setIsProcessing(true);
+              await cancelOrder(orderId);
+              notify("Đã hủy đơn hàng.");
+              navigation.goBack();
+            } catch (error) {
+              Alert.alert(
+                "Hủy đơn thất bại",
+                getApiErrorMessage(error, "Không thể hủy đơn hàng."),
+              );
+            } finally {
+              setIsProcessing(false);
+            }
+          })();
         },
-        {
-          text: "Hủy đơn",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              try {
-                setIsProcessing(true);
-                await cancelOrder(orderId);
-                notify("Đã hủy đơn hàng.");
-                navigation.goBack();
-              } catch (error) {
-                Alert.alert(
-                  "Hủy đơn thất bại",
-                  getApiErrorMessage(error, "Không thể hủy đơn hàng."),
-                );
-              } finally {
-                setIsProcessing(false);
-              }
-            })();
-          },
-        },
-      ],
-    );
+      },
+    ]);
   };
 
   if (orderQuery.isLoading) {
@@ -575,7 +589,12 @@ export default function CheckoutScreen({
               onChangeText={setVoucherCodeInput}
               placeholder="Nhập voucher"
               autoCapitalize="characters"
-              editable={isOrderPending && !isApplyingVoucher && !isRemovingVoucher && !Boolean(appliedVoucherCode)}
+              editable={
+                isOrderPending &&
+                !isApplyingVoucher &&
+                !isRemovingVoucher &&
+                !Boolean(appliedVoucherCode)
+              }
               className={`h-11 flex-1 rounded-xl border px-3 text-sm font-semibold ${appliedVoucherCode ? "border-slate-200 bg-slate-100 text-slate-500" : "border-slate-300 bg-white text-slate-800"}`}
             />
             {!appliedVoucherCode ? (
@@ -583,7 +602,9 @@ export default function CheckoutScreen({
                 onPress={() => {
                   void handleApplyVoucher();
                 }}
-                disabled={!isOrderPending || isApplyingVoucher || isRemovingVoucher}
+                disabled={
+                  !isOrderPending || isApplyingVoucher || isRemovingVoucher
+                }
                 className={`h-11 items-center justify-center rounded-xl px-4 ${!isOrderPending || isApplyingVoucher || isRemovingVoucher ? "bg-violet-300" : "bg-violet-600"}`}
               >
                 <Text className="text-xs font-bold text-white">
@@ -595,7 +616,9 @@ export default function CheckoutScreen({
                 onPress={() => {
                   void handleRemoveVoucher();
                 }}
-                disabled={!isOrderPending || isApplyingVoucher || isRemovingVoucher}
+                disabled={
+                  !isOrderPending || isApplyingVoucher || isRemovingVoucher
+                }
                 className={`h-11 items-center justify-center rounded-xl px-4 ${!isOrderPending || isApplyingVoucher || isRemovingVoucher ? "bg-red-200" : "bg-red-500"}`}
               >
                 <Text className="text-xs font-bold text-white">
