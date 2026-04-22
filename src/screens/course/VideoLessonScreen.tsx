@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   ActivityIndicator,
   AppState,
+  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -14,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { CourseDetailResponse } from "@/types";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
+import env from "../../env";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { CourseControllerService } from "../../services/api/CourseControllerService";
 import { VideoLessonControllerService } from "../../services/api/VideoLessonControllerService";
@@ -84,6 +86,10 @@ export default function VideoLessonScreen({
 
   const [currentPosition, setCurrentPosition] = useState(0);
   const [isLessonCompleted, setIsLessonCompleted] = useState(false);
+  const [videoPlaybackError, setVideoPlaybackError] = useState<string | null>(
+    null,
+  );
+  const [isOpeningBrowser, setIsOpeningBrowser] = useState(false);
   const resumeAppliedRef = useRef(false);
   const lastSyncedPositionRef = useRef(0);
   const isSavingRef = useRef(false);
@@ -111,9 +117,80 @@ export default function VideoLessonScreen({
     setIsLessonCompleted(completedLessonIds.includes(lessonId));
   }, [completedLessonIds, lessonId]);
 
-  const videoUrl = useMemo(() => {
+  const rawVideoUrl = useMemo(() => {
     return String(videoQuery.data?.data?.videoUrl ?? "").trim();
   }, [videoQuery.data?.data?.videoUrl]);
+
+  const videoUrl = useMemo(() => {
+    if (!rawVideoUrl) {
+      return "";
+    }
+
+    let normalized = rawVideoUrl
+      .replace(/[\r\n\t]/g, "")
+      .replace(/^['\"]+|['\"]+$/g, "")
+      .trim();
+
+    // Some environments return malformed separators like https:\\...
+    normalized = normalized.replace(/\\+/g, "/");
+
+    if (/^https?:\/[^/]/i.test(normalized)) {
+      normalized = normalized.replace(/^https?:\//i, (prefix) => `${prefix}/`);
+    }
+
+    if (normalized.startsWith("//")) {
+      normalized = `https:${normalized}`;
+    } else if (normalized.startsWith("/")) {
+      normalized = `${env.apiUrl}${normalized}`;
+    } else if (!/^https?:\/\//i.test(normalized)) {
+      normalized = `${env.apiUrl.replace(/\/$/, "")}/${normalized.replace(/^\//, "")}`;
+    }
+
+    try {
+      const encoded = encodeURI(normalized);
+      const parsed = new URL(encoded);
+
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        return "";
+      }
+
+      return encoded;
+    } catch {
+      return "";
+    }
+  }, [rawVideoUrl]);
+
+  const hasPlayableVideoUrl = useMemo(() => {
+    return /^https?:\/\//i.test(videoUrl);
+  }, [videoUrl]);
+
+  const handleOpenVideoInBrowser = async (): Promise<void> => {
+    if (!videoUrl || isOpeningBrowser) {
+      return;
+    }
+
+    try {
+      setIsOpeningBrowser(true);
+      const supported = await Linking.canOpenURL(videoUrl);
+
+      if (!supported) {
+        setVideoPlaybackError("Thiết bị không hỗ trợ mở URL video này.");
+        return;
+      }
+
+      await Linking.openURL(videoUrl);
+    } catch (error) {
+      setVideoPlaybackError(
+        `Không thể mở video bằng trình duyệt: ${String(error)}`,
+      );
+    } finally {
+      setIsOpeningBrowser(false);
+    }
+  };
+
+  useEffect(() => {
+    setVideoPlaybackError(null);
+  }, [videoUrl]);
 
   const trackMutation = useMutation({
     mutationFn: async (nextPosition: number) => {
@@ -294,7 +371,7 @@ export default function VideoLessonScreen({
         contentContainerClassName="px-4 pt-0 pb-8 gap-4"
       >
         <View className="overflow-hidden rounded-[28px] border border-white/70 bg-white/75">
-          {videoUrl ? (
+          {videoUrl && hasPlayableVideoUrl ? (
             <Video
               ref={videoRef}
               source={{ uri: videoUrl }}
@@ -303,6 +380,9 @@ export default function VideoLessonScreen({
               shouldPlay={false}
               isLooping={false}
               onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+              onError={(error) => {
+                setVideoPlaybackError(String(error ?? "Không thể phát video."));
+              }}
               style={{
                 width: "100%",
                 height: 240,
@@ -312,11 +392,55 @@ export default function VideoLessonScreen({
           ) : (
             <View className="h-[240px] items-center justify-center bg-slate-950 px-6">
               <Text className="text-center text-sm font-medium text-white/80">
-                Backend chưa trả video URL cho bài học này.
+                {rawVideoUrl
+                  ? "Backend trả video URL không hợp lệ cho bài học này."
+                  : "Backend chưa trả video URL cho bài học này."}
               </Text>
             </View>
           )}
         </View>
+
+        {rawVideoUrl && !hasPlayableVideoUrl ? (
+          <View className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <Text className="text-xs font-semibold text-amber-700">
+              URL video backend trả về: {rawVideoUrl}
+            </Text>
+          </View>
+        ) : null}
+
+        {hasPlayableVideoUrl ? (
+          <View className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
+            <Text className="text-[11px] font-semibold text-slate-500">
+              Nguồn video đang phát
+            </Text>
+            <Text className="mt-1 text-[11px] font-medium text-slate-700">
+              {videoUrl}
+            </Text>
+          </View>
+        ) : null}
+
+        {videoPlaybackError ? (
+          <View className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+            <Text className="text-xs font-semibold text-red-700">
+              Không thể phát video: {videoPlaybackError}
+            </Text>
+            {hasPlayableVideoUrl ? (
+              <Pressable
+                className="mt-3 h-10 items-center justify-center rounded-xl bg-red-600"
+                onPress={() => {
+                  void handleOpenVideoInBrowser();
+                }}
+                disabled={isOpeningBrowser}
+              >
+                <Text className="text-xs font-bold text-white">
+                  {isOpeningBrowser
+                    ? "Đang mở trình duyệt..."
+                    : "Mở video bằng trình duyệt"}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
 
         <View className="px-1">
           <Text className="text-lg font-black text-slate-800">

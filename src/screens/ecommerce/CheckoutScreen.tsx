@@ -12,6 +12,7 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   ToastAndroid,
   View,
 } from "react-native";
@@ -30,10 +31,13 @@ import { fetchCurrentUser } from "../../services/api/authApi";
 import {
   checkPaymentPaid,
   confirmPayment,
+  cancelOrder,
   getOrderById,
+  recreateOrderWithVoucher,
   type OrderDetailItemApi,
 } from "../../services/api/orderApi";
 import { useAuthStore } from "../../store/useAuthStore";
+import { VoucherControllerService } from "../../services/api/VoucherControllerService";
 
 type CheckoutScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -93,6 +97,10 @@ export default function CheckoutScreen({
   const [isProcessing, setIsProcessing] = useState(false);
   const [useRewardPoints, setUseRewardPoints] = useState(false);
   const [isWaitingPaymentResult, setIsWaitingPaymentResult] = useState(false);
+  const [voucherCodeInput, setVoucherCodeInput] = useState("");
+  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
+  const [isRemovingVoucher, setIsRemovingVoucher] = useState(false);
+  const [voucherHint, setVoucherHint] = useState("");
   const paidHandledRef = useRef(false);
 
   const orderId = String(route.params?.orderId ?? "").trim();
@@ -134,12 +142,40 @@ export default function CheckoutScreen({
 
   const orderCode = `EDUF-${orderId.padStart(6, "0")}`;
   const isOrderPending = isPendingOrderStatus(orderQuery.data?.status);
+  const appliedVoucherCode = String(orderQuery.data?.voucher?.code ?? "").trim();
+  const voucherDiscountAmount = Math.max(
+    0,
+    Number(orderQuery.data?.voucher?.discountAmount ?? 0),
+  );
+  const serverDiscountAmount = Math.max(
+    0,
+    Number(orderQuery.data?.discounted ?? 0),
+  );
+  const coursePromotionDiscount = Math.max(
+    0,
+    serverDiscountAmount - voucherDiscountAmount,
+  );
+  const subtotalAfterServerDiscount = Math.max(
+    0,
+    totalAmount - serverDiscountAmount,
+  );
+  const rewardPointsDisabled = appliedVoucherCode.length > 0;
   const rewardPoints = Number(user?.rewardPoints ?? 0);
   const maxDiscount = rewardPoints * 1000;
-  const discountAmount = useRewardPoints
-    ? Math.min(maxDiscount, totalAmount)
+  const rewardPointsDiscount = useRewardPoints && !rewardPointsDisabled
+    ? Math.min(maxDiscount, subtotalAfterServerDiscount)
     : 0;
-  const finalPrice = Math.max(0, totalAmount - discountAmount);
+  const finalPrice = Math.max(0, subtotalAfterServerDiscount - rewardPointsDiscount);
+
+  useEffect(() => {
+    setVoucherCodeInput(appliedVoucherCode);
+  }, [appliedVoucherCode]);
+
+  useEffect(() => {
+    if (rewardPointsDisabled && useRewardPoints) {
+      setUseRewardPoints(false);
+    }
+  }, [rewardPointsDisabled, useRewardPoints]);
 
   const finalizePaidOrder = async (): Promise<void> => {
     if (paidHandledRef.current) {
@@ -274,22 +310,133 @@ export default function CheckoutScreen({
     }
   };
 
+  const handleApplyVoucher = async (): Promise<void> => {
+    if (!isOrderPending || isApplyingVoucher || isRemovingVoucher) {
+      return;
+    }
+
+    const code = voucherCodeInput.trim();
+
+    if (!code) {
+      setVoucherHint("Vui lòng nhập mã voucher.");
+      return;
+    }
+
+    if (appliedVoucherCode && appliedVoucherCode.toLowerCase() === code.toLowerCase()) {
+      setVoucherHint("Voucher này đã được áp dụng.");
+      return;
+    }
+
+    try {
+      setIsApplyingVoucher(true);
+      setVoucherHint("");
+
+      const voucherResponse = await VoucherControllerService.getVoucherByCode({
+        code,
+      });
+      const voucher = voucherResponse.data;
+
+      if (!voucher) {
+        setVoucherHint("Không tìm thấy voucher.");
+        return;
+      }
+
+      const minPurchase = Number(voucher.minPurchaseAmount ?? 0);
+      if (minPurchase > 0 && totalAmount < minPurchase) {
+        setVoucherHint(
+          `Đơn hàng cần tối thiểu ${formatVnd(minPurchase)} để áp dụng mã này.`,
+        );
+        return;
+      }
+
+      const now = Date.now();
+      const validFrom = voucher.validFrom ? new Date(voucher.validFrom).getTime() : null;
+      const validTo = voucher.validTo ? new Date(voucher.validTo).getTime() : null;
+
+      if (validFrom && Number.isFinite(validFrom) && now < validFrom) {
+        setVoucherHint("Voucher chưa đến thời gian áp dụng.");
+        return;
+      }
+
+      if (validTo && Number.isFinite(validTo) && now > validTo) {
+        setVoucherHint("Voucher đã hết hạn.");
+        return;
+      }
+
+      const recreated = await recreateOrderWithVoucher({
+        orderId,
+        voucherCode: code,
+        paymentMethod: selectedMethod === "momo" ? "MOMO" : "VN_PAY",
+      });
+
+      setUseRewardPoints(false);
+      setVoucherHint(`Đã áp dụng voucher ${code.toUpperCase()}.`);
+      navigation.replace("Checkout", { orderId: String(recreated.id ?? "") });
+    } catch (error) {
+      setVoucherHint(getApiErrorMessage(error, "Không thể áp dụng voucher."));
+    } finally {
+      setIsApplyingVoucher(false);
+    }
+  };
+
+  const handleRemoveVoucher = async (): Promise<void> => {
+    if (!isOrderPending || !appliedVoucherCode || isApplyingVoucher || isRemovingVoucher) {
+      return;
+    }
+
+    try {
+      setIsRemovingVoucher(true);
+      setVoucherHint("");
+
+      const recreated = await recreateOrderWithVoucher({
+        orderId,
+        voucherCode: undefined,
+        paymentMethod: selectedMethod === "momo" ? "MOMO" : "VN_PAY",
+      });
+
+      setVoucherCodeInput("");
+      setVoucherHint("Đã bỏ voucher khỏi đơn hàng.");
+      navigation.replace("Checkout", { orderId: String(recreated.id ?? "") });
+    } catch (error) {
+      setVoucherHint(getApiErrorMessage(error, "Không thể bỏ voucher."));
+    } finally {
+      setIsRemovingVoucher(false);
+    }
+  };
+
   const handleCancelOrder = (): void => {
     if (!isValidOrderId || isProcessing) {
       return;
     }
 
     Alert.alert(
-      "Chưa hỗ trợ hủy đơn",
-      "Backend hiện chưa có endpoint hủy đơn hàng. Bạn có thể quay lại và tiếp tục thanh toán sau.",
+      "Hủy đơn hàng",
+      "Bạn có chắc muốn hủy đơn hàng này?",
       [
         {
-          text: "Đóng",
+          text: "Không",
           style: "cancel",
         },
         {
-          text: "Quay lại",
-          onPress: () => navigation.goBack(),
+          text: "Hủy đơn",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              try {
+                setIsProcessing(true);
+                await cancelOrder(orderId);
+                notify("Đã hủy đơn hàng.");
+                navigation.goBack();
+              } catch (error) {
+                Alert.alert(
+                  "Hủy đơn thất bại",
+                  getApiErrorMessage(error, "Không thể hủy đơn hàng."),
+                );
+              } finally {
+                setIsProcessing(false);
+              }
+            })();
+          },
         },
       ],
     );
@@ -418,15 +565,66 @@ export default function CheckoutScreen({
           onSelect={setSelectedMethod}
         />
 
+        <View className="mt-4 overflow-hidden rounded-[24px] border border-white/70 bg-white/75 p-4">
+          <Text className="mb-3 text-sm font-bold text-slate-800">
+            Mã giảm giá
+          </Text>
+          <View className="flex-row items-center gap-2">
+            <TextInput
+              value={voucherCodeInput}
+              onChangeText={setVoucherCodeInput}
+              placeholder="Nhập voucher"
+              autoCapitalize="characters"
+              editable={isOrderPending && !isApplyingVoucher && !isRemovingVoucher && !Boolean(appliedVoucherCode)}
+              className={`h-11 flex-1 rounded-xl border px-3 text-sm font-semibold ${appliedVoucherCode ? "border-slate-200 bg-slate-100 text-slate-500" : "border-slate-300 bg-white text-slate-800"}`}
+            />
+            {!appliedVoucherCode ? (
+              <Pressable
+                onPress={() => {
+                  void handleApplyVoucher();
+                }}
+                disabled={!isOrderPending || isApplyingVoucher || isRemovingVoucher}
+                className={`h-11 items-center justify-center rounded-xl px-4 ${!isOrderPending || isApplyingVoucher || isRemovingVoucher ? "bg-violet-300" : "bg-violet-600"}`}
+              >
+                <Text className="text-xs font-bold text-white">
+                  {isApplyingVoucher ? "Đang áp dụng..." : "Áp dụng"}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() => {
+                  void handleRemoveVoucher();
+                }}
+                disabled={!isOrderPending || isApplyingVoucher || isRemovingVoucher}
+                className={`h-11 items-center justify-center rounded-xl px-4 ${!isOrderPending || isApplyingVoucher || isRemovingVoucher ? "bg-red-200" : "bg-red-500"}`}
+              >
+                <Text className="text-xs font-bold text-white">
+                  {isRemovingVoucher ? "Đang bỏ..." : "Bỏ mã"}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+
+          {voucherHint ? (
+            <Text className="mt-2 text-xs font-semibold text-slate-600">
+              {voucherHint}
+            </Text>
+          ) : null}
+        </View>
+
         <View className="mt-4">
           <OrderSummaryCard
             orderCode={orderCode}
             courseCount={orderItems.length}
             orderTotalPrice={totalAmount}
+            coursePromotionDiscount={coursePromotionDiscount}
+            voucherCode={appliedVoucherCode || undefined}
+            voucherDiscountAmount={voucherDiscountAmount}
             rewardPoints={rewardPoints}
             useRewardPoints={useRewardPoints}
-            discountAmount={discountAmount}
+            rewardPointsDiscount={rewardPointsDiscount}
             finalPrice={finalPrice}
+            rewardPointsDisabled={rewardPointsDisabled}
             onToggleUseRewardPoints={setUseRewardPoints}
           />
         </View>
@@ -441,7 +639,7 @@ export default function CheckoutScreen({
             Tổng thanh toán:
           </Text>
           <View className="items-end">
-            {useRewardPoints ? (
+            {serverDiscountAmount > 0 || useRewardPoints ? (
               <Text className="text-xs font-semibold text-slate-400 line-through">
                 {formatVnd(totalAmount)}
               </Text>

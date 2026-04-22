@@ -102,14 +102,19 @@ export default function OrderHistoryCard({
         style={StyleSheet.absoluteFillObject}
       />
 
-      <View className="flex-row items-center justify-between border-b border-slate-100 px-4 py-3">
-        <Text className="text-xs font-black uppercase tracking-wider text-slate-700">
+      <View className="flex-col items-start gap-2 border-b border-slate-100 px-4 py-3">
+        <View className="flex-row items-center w-full justify-between">
+           <Text className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+             Mã đơn hàng:
+           </Text>
+           <Text
+            className={`rounded-full px-3 py-1 text-[10px] font-bold ${badgeClass}`}
+           >
+            {badgeText}
+           </Text>
+        </View>
+        <Text className="text-xs font-black uppercase tracking-wider text-slate-700 w-full" numberOfLines={2}>
           #{order.id ?? "-"}
-        </Text>
-        <Text
-          className={`rounded-full px-3 py-1 text-[10px] font-bold ${badgeClass}`}
-        >
-          {badgeText}
         </Text>
       </View>
 

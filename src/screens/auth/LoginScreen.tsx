@@ -91,7 +91,9 @@ export default function LoginScreen({
     }
 
     try {
-      await login(email, password);
+      const result = await login(email, password);
+      const isInstructor = result.user?.role === "INSTRUCTOR";
+      const targetTab = isInstructor ? "InstructorTabs" : "MainTabs";
 
       const redirectTo = route.params?.redirectTo;
       const redirectCourseId = route.params?.courseId;
@@ -101,7 +103,7 @@ export default function LoginScreen({
           CommonActions.reset({
             index: 1,
             routes: [
-              { name: "MainTabs" },
+              { name: targetTab as any },
               {
                 name: "CourseDetail",
                 params: { courseId: redirectCourseId },
@@ -115,7 +117,7 @@ export default function LoginScreen({
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
-          routes: [{ name: "MainTabs" }],
+          routes: [{ name: targetTab as any }],
         }),
       );
     } catch (error) {

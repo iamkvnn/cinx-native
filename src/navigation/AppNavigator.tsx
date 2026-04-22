@@ -35,6 +35,13 @@ import {
   VouchersScreen,
 } from "../screens/profile/ProfileMenuScreens";
 
+import DashboardScreen from "../screens/instructor/DashboardScreen";
+import InstructorCoursesScreen from "../screens/instructor/InstructorCoursesScreen";
+import CreateCourseScreen from "../screens/instructor/CreateCourseScreen";
+import CourseManagementScreen from "../screens/instructor/CourseManagementScreen";
+import CurriculumBuilderScreen from "../screens/instructor/CurriculumBuilderScreen";
+import CourseStudentsProgressScreen from "../screens/instructor/CourseStudentsProgressScreen";
+
 export type RootStackParamList = {
   Landing: undefined;
   Login:
@@ -44,6 +51,11 @@ export type RootStackParamList = {
       }
     | undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
+  InstructorTabs: NavigatorScreenParams<InstructorTabParamList> | undefined;
+  CreateCourse: undefined;
+  CourseManagement: { courseId: string };
+  CurriculumBuilder: { courseId: string };
+  CourseStudentsProgress: { courseId: string; courseTitle: string };
   CourseDetail: { courseId?: string };
   VideoLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
   ArticleLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
@@ -69,8 +81,15 @@ export type MainTabParamList = {
   Profile: undefined;
 };
 
+export type InstructorTabParamList = {
+  Dashboard: undefined;
+  MyCourses: undefined;
+  Profile: undefined;
+};
+
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createMaterialTopTabNavigator<MainTabParamList>();
+const InstructorTab = createMaterialTopTabNavigator<InstructorTabParamList>();
 
 const TAB_ICON_MAP: Record<
   keyof MainTabParamList,
@@ -83,15 +102,26 @@ const TAB_ICON_MAP: Record<
   Profile: "person",
 };
 
+const INSTRUCTOR_TAB_ICON_MAP: Record<
+  keyof InstructorTabParamList,
+  "stats-chart" | "library" | "person"
+> = {
+  Dashboard: "stats-chart",
+  MyCourses: "library",
+  Profile: "person",
+};
+
 function GlassSwipeTabBar({
   state,
   descriptors,
   navigation,
   cartCount,
   notificationCount,
+  iconMap,
 }: MaterialTopTabBarProps & {
   cartCount: number;
   notificationCount: number;
+  iconMap: Record<string, any>;
 }): ReactElement {
   return (
     <View style={styles.tabBar}>
@@ -109,7 +139,7 @@ function GlassSwipeTabBar({
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
           const color = isFocused ? "#7958ee" : "#64748b";
-          const iconName = TAB_ICON_MAP[route.name as keyof MainTabParamList];
+          const iconName = iconMap[route.name];
           const { options } = descriptors[route.key];
           const tabBadge =
             route.name === "Cart"
@@ -183,6 +213,7 @@ function MainTabs(): ReactElement {
           {...props}
           cartCount={cartCount}
           notificationCount={notificationCount}
+          iconMap={TAB_ICON_MAP}
         />
       )}
       screenOptions={{
@@ -230,6 +261,58 @@ function MainTabs(): ReactElement {
   );
 }
 
+function InstructorTabs(): ReactElement {
+  const user = useAuthStore((state) => state.user);
+  const unreadNotificationsQuery = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () => NotificationControllerService.countUnreadNotifications(),
+    enabled: Boolean(user),
+    retry: false,
+  });
+  const notificationCount = Number(unreadNotificationsQuery.data?.data ?? 0);
+
+  return (
+    <InstructorTab.Navigator
+      tabBarPosition="bottom"
+      tabBar={(props) => (
+        <GlassSwipeTabBar
+          {...props}
+          cartCount={0}
+          notificationCount={notificationCount}
+          iconMap={INSTRUCTOR_TAB_ICON_MAP}
+        />
+      )}
+      screenOptions={{
+        swipeEnabled: true,
+        animationEnabled: true,
+        lazy: false,
+      }}
+    >
+      <InstructorTab.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{
+          title: "Dashboard",
+        }}
+      />
+      <InstructorTab.Screen
+        name="MyCourses"
+        component={InstructorCoursesScreen}
+        options={{
+          title: "My Courses",
+        }}
+      />
+      <InstructorTab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: "Profile",
+        }}
+      />
+    </InstructorTab.Navigator>
+  );
+}
+
 export default function AppNavigator(): ReactElement {
   const user = useAuthStore((state) => state.user);
 
@@ -245,7 +328,42 @@ export default function AppNavigator(): ReactElement {
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
         <RootStack.Group screenOptions={{ headerShown: false }}>
-          <RootStack.Screen name="MainTabs" component={MainTabs} />
+          {user.role === 'INSTRUCTOR' ? (
+            <RootStack.Screen name="InstructorTabs" component={InstructorTabs} />
+          ) : (
+            <RootStack.Screen name="MainTabs" component={MainTabs} />
+          )}
+          <RootStack.Screen
+            name="CreateCourse"
+            component={CreateCourseScreen}
+            options={{
+              title: "Tạo Khoá Học Mới",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+            }}
+          />
+          <RootStack.Screen
+            name="CourseManagement"
+            component={CourseManagementScreen}
+            options={{
+              title: "Quản Lý Khoá Học",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+              headerBackTitle: "",
+              headerBackButtonDisplayMode: "minimal",
+            }}
+          />
+          <RootStack.Screen
+            name="CurriculumBuilder"
+            component={CurriculumBuilderScreen}
+            options={{
+              title: "Chương Trình Học",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+              headerBackTitle: "",
+              headerBackButtonDisplayMode: "minimal",
+            }}
+          />
           <RootStack.Screen
             name="Cart"
             component={CartScreen}
@@ -300,6 +418,17 @@ export default function AppNavigator(): ReactElement {
 
       <RootStack.Group screenOptions={{ headerShown: false }}>
         <RootStack.Screen name="CourseDetail" component={CourseDetailScreen} />
+        <RootStack.Screen 
+          name="CourseStudentsProgress" 
+          component={CourseStudentsProgressScreen}
+          options={{
+            headerShown: true,
+            title: "Tiến độ học viên",
+            headerBackTitle: "",
+            headerBackButtonDisplayMode: "minimal",
+            headerTintColor: "#7958ee",
+          }}
+        />
         <RootStack.Screen
           name="VideoLesson"
           component={VideoLessonScreen}

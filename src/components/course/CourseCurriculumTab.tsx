@@ -75,8 +75,8 @@ export default function CourseCurriculumTab({
                   const isPreview = Boolean(rawLesson.isPreview);
                   const isCompleted = completedLessonIds.includes(lessonId);
 
-                  // Keep purchase gating but allow explicit preview lessons.
-                  const locked = !isPurchased && !isPreview && lectureIndex > 0;
+                  // Lock all lessons if course is not purchased
+                  const locked = !isPurchased;
                   const canOpen = !locked && lessonId.length > 0;
 
                   return (
@@ -141,11 +141,7 @@ export default function CourseCurriculumTab({
                         </Text>
                       </View>
 
-                      {!isPurchased && lectureIndex === 0 ? (
-                        <Text className="rounded-md bg-violet-50 px-2 py-1 text-xs font-bold text-violet-600">
-                          Xem trước
-                        </Text>
-                      ) : null}
+                      {/* Removed preview label per request */}
                     </Pressable>
                   );
                 })}

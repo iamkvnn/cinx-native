@@ -11,6 +11,7 @@ export interface ExploreFeaturedCourse {
   rating: number;
   learnersLabel: string;
   priceLabel: string;
+  oldPriceLabel?: string;
   tagLabel: string;
   imageUrl: string;
 }
@@ -25,6 +26,7 @@ export interface ExploreCourseItem {
   rating: number;
   learnersLabel: string;
   priceLabel: string;
+  oldPriceLabel?: string;
   imageUrl: string;
 }
 

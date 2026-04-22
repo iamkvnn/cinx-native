@@ -59,10 +59,37 @@ const mapOrderItems = (
   }));
 };
 
+const mapCreatedOrder = (
+  order: OrderResponse,
+  paymentMethod: "VN_PAY" | "MOMO",
+): OrderApi => {
+  const mappedItems = mapOrderItems(order.items);
+
+  return {
+    id: order.id,
+    userId: order.userId,
+    items: mappedItems,
+    totalPrice: order.totalPrice,
+    discounted: order.discounted,
+    orderDate: order.orderDate,
+    status: "PENDING",
+    totalAmount: order.totalPrice,
+    total_amount: order.totalPrice,
+    orderItems: mappedItems,
+    details: mappedItems,
+    paymentMethod,
+  } satisfies OrderApi;
+};
+
 const mapOrder = (order: OrderDetailResponse): OrderApi => {
+  const backendStatus = String(
+    (order as OrderDetailResponse & Record<string, unknown>).status ?? "",
+  ).toUpperCase();
   const paymentStatus = String(order.payment?.status ?? "").toUpperCase();
   const status =
-    paymentStatus === "PAID"
+    backendStatus === "CANCELLED"
+      ? "CANCELLED"
+      : paymentStatus === "PAID"
       ? "COMPLETED"
       : paymentStatus === "PROCESSING"
         ? "PENDING"
@@ -158,20 +185,88 @@ export const checkoutOrder = async ({
     throw new Error("Không thể tạo đơn hàng.");
   }
 
-  return {
-    id: order.id,
-    userId: order.userId,
-    items: mapOrderItems(order.items),
-    totalPrice: order.totalPrice,
-    discounted: order.discounted,
-    orderDate: order.orderDate,
-    status: "PENDING",
-    totalAmount: order.totalPrice,
-    total_amount: order.totalPrice,
-    orderItems: mapOrderItems(order.items),
-    details: mapOrderItems(order.items),
-    paymentMethod,
-  } satisfies OrderApi;
+  return mapCreatedOrder(order, paymentMethod);
+};
+
+const buildCartItemsFromOrder = (order: OrderApi): CartItemDto[] => {
+  const sourceItems = (order.details ?? order.orderItems ?? order.items ?? []) as
+    OrderDetailItemApi[];
+  const cartItems: CartItemDto[] = [];
+
+  sourceItems.forEach((item) => {
+    const courseId = String(item.courseId ?? item.course?.id ?? "").trim();
+
+    if (!courseId) {
+      return;
+    }
+
+    const title = String(item.title ?? item.course?.title ?? "Khóa học");
+    const price = Number(item.price ?? item.unitPrice ?? 0);
+    const discountedPrice = Number(
+      item.discountedPrice ?? item.finalPrice ?? item.unitPrice ?? price,
+    );
+
+    cartItems.push({
+      id: String(item.id ?? courseId),
+      course: {
+        ...(item.course as CourseResponse | undefined),
+        id: courseId,
+        title,
+        price,
+        discountedPrice,
+      } as CourseResponse,
+    });
+  });
+
+  return cartItems;
+};
+
+export const recreateOrderWithVoucher = async ({
+  orderId,
+  voucherCode,
+  paymentMethod,
+}: {
+  orderId: string;
+  voucherCode?: string;
+  paymentMethod?: "VN_PAY" | "MOMO";
+}): Promise<OrderApi> => {
+  const existingOrder = await getOrderById(orderId);
+  const existingStatus = String(existingOrder.status ?? "").toUpperCase();
+
+  if (existingStatus !== "PENDING") {
+    throw new Error("Chỉ có thể cập nhật voucher cho đơn hàng đang chờ.");
+  }
+
+  const cartItems = buildCartItemsFromOrder(existingOrder);
+
+  if (cartItems.length === 0) {
+    throw new Error("Không có khóa học hợp lệ để tạo lại đơn hàng.");
+  }
+
+  const resolvedPaymentMethod =
+    paymentMethod ?? existingOrder.paymentMethod ?? "MOMO";
+
+  const createdResponse = await OrderControllerService.createOrder({
+    requestBody: {
+      cartItems,
+      paymentMethod: resolvedPaymentMethod,
+      voucherCode: voucherCode?.trim() || undefined,
+    } satisfies CreateOrderRequest,
+  });
+
+  const createdOrder = createdResponse.data;
+
+  if (!createdOrder?.id) {
+    throw new Error("Không thể tạo lại đơn hàng với voucher.");
+  }
+
+  try {
+    await axiosClient.put(`/api/v1/orders/${orderId}/cancel`);
+  } catch {
+    // Ignore cancellation failure so user can continue with newly created order.
+  }
+
+  return mapCreatedOrder(createdOrder, resolvedPaymentMethod);
 };
 
 export const confirmPayment = async (
@@ -290,7 +385,7 @@ export const checkPaymentPaid = async (
 };
 
 export const cancelOrder = async (_orderId: string | number): Promise<void> => {
-  throw new Error("Backend mới hiện chưa có endpoint hủy đơn hàng.");
+  await axiosClient.put(`/api/v1/orders/${String(_orderId)}/cancel`);
 };
 
 export type { OrderResponse };

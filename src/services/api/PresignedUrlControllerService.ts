@@ -39,4 +39,23 @@ export class PresignedUrlControllerService {
       },
     });
   }
+
+  /**
+   * @returns ApiResponsePresignedUrlResponse OK
+   * @throws ApiError
+   */
+  public static getUserPresignedUrl({
+    fileName,
+    contentType,
+  }: {
+    fileName: string;
+    contentType: string;
+  }): Promise<ApiResponsePresignedUrlResponse> {
+    return axiosClient.get("/api/v1/users/upload/presigned-url", {
+      params: {
+        fileName: fileName,
+        contentType: contentType,
+      },
+    });
+  }
 }

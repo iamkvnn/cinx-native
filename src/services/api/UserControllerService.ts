@@ -30,58 +30,12 @@ export class UserControllerService {
    */
   public static updateUser({
     id,
-    formData,
+    requestBody,
   }: {
     id: string;
-    formData?: {
-      user: UpdateProfileRequest;
-      avatar?:
-        | Blob
-        | {
-            uri: string;
-            name?: string;
-            type?: string;
-          };
-    };
+    requestBody: UpdateProfileRequest;
   }): Promise<ApiResponseUserDto> {
-    const multipartFormData = new FormData();
-
-    if (formData?.user) {
-      try {
-        multipartFormData.append(
-          "user",
-          new Blob([JSON.stringify(formData.user)], {
-            type: "application/json",
-          }) as never,
-        );
-      } catch {
-        // Fallback for environments where Blob construction for JSON part is not supported.
-        multipartFormData.append("user", JSON.stringify(formData.user));
-      }
-    }
-
-    if (formData?.avatar) {
-      const avatar = formData.avatar as
-        | Blob
-        | {
-            uri: string;
-            name?: string;
-            type?: string;
-          };
-
-      const avatarName =
-        typeof avatar === "object" && "name" in avatar && avatar.name
-          ? avatar.name
-          : "avatar.jpg";
-
-      multipartFormData.append("avatar", avatar as never, avatarName);
-    }
-
-    return axiosClient.put(`/api/v1/users/${id}`, multipartFormData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    return axiosClient.put(`/api/v1/users/${id}`, requestBody);
   }
   /**
    * @returns PaginatedApiResponseUserDto OK

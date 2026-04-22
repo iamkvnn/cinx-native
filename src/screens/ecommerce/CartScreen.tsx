@@ -42,11 +42,13 @@ import {
   type CartApi,
   type CartItemApi,
 } from "../../services/api/cartApi";
+import { OrderControllerService } from "../../services/api/OrderControllerService";
 import {
   checkoutOrder,
   fetchMyOrders,
   type OrderApi,
 } from "../../services/api/orderApi";
+import { resolvePricing } from "../../utils/pricing";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1200&q=80";
@@ -81,11 +83,32 @@ const getApiErrorMessage = (error: unknown, fallback: string): string => {
 };
 
 const getItemPrice = (item: CartItemApi): number => {
-  const unitPrice = Number(
-    item.unitPrice ?? item.unit_price ?? item.course?.price ?? 0,
+  const pricing = resolvePricing(
+    item.unitPrice ?? item.unit_price ?? item.course?.price,
+    (item as { discountedPrice?: number; discounted_price?: number })
+      .discountedPrice ??
+      (item as { discounted_price?: number }).discounted_price ??
+      item.course?.discountedPrice,
   );
   const quantity = Math.max(1, Number(item.quantity ?? 1));
-  return unitPrice * quantity;
+  return pricing.currentPrice * quantity;
+};
+
+const getItemOriginalPrice = (item: CartItemApi): number | undefined => {
+  const pricing = resolvePricing(
+    item.unitPrice ?? item.unit_price ?? item.course?.price,
+    (item as { discountedPrice?: number; discounted_price?: number })
+      .discountedPrice ??
+      (item as { discounted_price?: number }).discounted_price ??
+      item.course?.discountedPrice,
+  );
+
+  if (!pricing.hasDiscount) {
+    return undefined;
+  }
+
+  const quantity = Math.max(1, Number(item.quantity ?? 1));
+  return pricing.originalPrice * quantity;
 };
 
 const isPendingOrderStatus = (status: unknown): boolean => {
@@ -105,6 +128,7 @@ const mapCartItem = (item: CartItemApi): CartItemCardData => {
     title: course?.title?.trim() || "Khóa học chưa cập nhật",
     instructorName: course?.instructor?.name ?? "Giảng viên",
     price: getItemPrice(item),
+    originalPrice: getItemOriginalPrice(item),
     imageUrl: course?.images?.[0]?.imageUrl ?? FALLBACK_IMAGE,
   };
 };
@@ -137,6 +161,26 @@ export default function CartScreen(): ReactElement {
     queryFn: fetchMyOrders,
     retry: false,
   });
+
+  const cancelOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => OrderControllerService.cancelOrder({ orderId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["cart"] });
+      showToast("Đã hủy đơn hàng chờ.");
+    },
+    onError: () => {
+      showToast("Không thể hủy đơn hàng.");
+    }
+  });
+
+  const handleCancelPendingOrder = (): void => {
+    if (!pendingOrder?.id) return;
+    Alert.alert("Xác nhận", "Bạn có chắc chắn muốn hủy đơn hàng chờ không?", [
+      { text: "Không", style: "cancel" },
+      { text: "Hủy đơn", style: "destructive", onPress: () => cancelOrderMutation.mutate(String(pendingOrder.id)) }
+    ]);
+  };
 
   const cartItems = useMemo<CartItemCardData[]>(() => {
     const payload: CartApi | undefined = cartQuery.data;
@@ -354,6 +398,26 @@ export default function CartScreen(): ReactElement {
               />
             }
           >
+            {pendingOrder ? (
+              <View className="mb-4 rounded-[28px] border border-amber-200/80 bg-amber-50/80 p-5">
+                <Text className="text-base font-black text-amber-700">
+                  Bạn đang có đơn chờ thanh toán
+                </Text>
+                <Text className="mt-2 text-sm font-medium leading-6 text-amber-700/90">
+                  Bạn hiện có đơn hàng chưa thanh toán. Bạn có thể tiếp tục thanh toán hoặc hủy đơn để mua lại.
+                </Text>
+                <Pressable
+                  onPress={handleCancelPendingOrder}
+                  disabled={cancelOrderMutation.isPending}
+                  className={`mt-4 self-start rounded-xl px-4 py-2 ${cancelOrderMutation.isPending ? "bg-red-50" : "bg-red-100"}`}
+                >
+                  <Text className={`text-xs font-bold ${cancelOrderMutation.isPending ? "text-red-400" : "text-red-700"}`}>
+                    {cancelOrderMutation.isPending ? "Đang hủy..." : "Hủy đơn chờ"}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+
             {cartItems.length > 0 ? (
               cartItems.map((item) => (
                 <CartItemCard
@@ -372,17 +436,7 @@ export default function CartScreen(): ReactElement {
                   }}
                 />
               ))
-            ) : (
-              <View className="mb-4 rounded-[28px] border border-amber-200/80 bg-amber-50/80 p-5">
-                <Text className="text-base font-black text-amber-700">
-                  Bạn đang có đơn chờ thanh toán
-                </Text>
-                <Text className="mt-2 text-sm font-medium leading-6 text-amber-700/90">
-                  Giỏ hàng hiện đã trống, nhưng đơn hàng chưa thanh toán vẫn còn
-                  hiệu lực. Bạn có thể tiếp tục thanh toán ngay.
-                </Text>
-              </View>
-            )}
+            ) : null}
 
             <View
               className="mt-2 overflow-hidden rounded-[28px] border border-white/75 bg-white/70 p-5"

@@ -43,7 +43,8 @@ type QuizLessonScreenProps = NativeStackScreenProps<
 export default function QuizLessonScreen({
   route,
 }: QuizLessonScreenProps): ReactElement {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const queryClient = useQueryClient();
   const currentUserId = useAuthStore((state) => state.user?.id);
   const courseId = String(route.params?.courseId ?? "").trim();
@@ -70,7 +71,9 @@ export default function QuizLessonScreen({
   });
 
   const resolvedQuizLessonId = useMemo(() => {
-    const fromApi = (quizQuery.data?.data as { id?: string; quizLessonId?: string } | undefined);
+    const fromApi = quizQuery.data?.data as
+      | { id?: string; quizLessonId?: string }
+      | undefined;
     const candidate = fromApi?.id ?? fromApi?.quizLessonId ?? lessonId;
     return String(candidate ?? "").trim();
   }, [quizQuery.data?.data, lessonId]);
@@ -122,8 +125,29 @@ export default function QuizLessonScreen({
     return fallback;
   };
 
+  const isAttemptLimitError = (error: unknown): boolean => {
+    const message = getApiErrorMessage(error, "").toLowerCase();
+    return (
+      message.includes("maximum") ||
+      message.includes("max attempt") ||
+      message.includes("reach the maximum") ||
+      message.includes("vuot qua so lan") ||
+      message.includes("vượt quá số lần")
+    );
+  };
+
   const createSessionMutation = useMutation({
     mutationFn: async () => {
+      const existingSessions = (quizSessionsQuery.data?.data ??
+        []) as QuizSessionResponse[];
+      const inProgressSession = existingSessions.find(
+        (session) => String(session.status ?? "") === "IN_PROGRESS",
+      );
+
+      if (inProgressSession?.id) {
+        return String(inProgressSession.id);
+      }
+
       const candidates = Array.from(
         new Set([resolvedQuizLessonId, lessonId].map((id) => id.trim())),
       ).filter(Boolean);
@@ -132,9 +156,11 @@ export default function QuizLessonScreen({
 
       for (const quizLessonId of candidates) {
         try {
-          const response = await QuizSessionControllerService.createQuizSession({
-            quizLessonId,
-          });
+          const response = await QuizSessionControllerService.createQuizSession(
+            {
+              quizLessonId,
+            },
+          );
 
           return String(response.data?.id ?? "");
         } catch (error) {
@@ -155,6 +181,23 @@ export default function QuizLessonScreen({
       }
     },
     onError: (error) => {
+      const existingSessions = (quizSessionsQuery.data?.data ??
+        []) as QuizSessionResponse[];
+      const inProgressSession = existingSessions.find(
+        (session) => String(session.status ?? "") === "IN_PROGRESS",
+      );
+
+      if (isAttemptLimitError(error) && inProgressSession?.id) {
+        setQuizSessionId(String(inProgressSession.id));
+        setCurrentQuestionIndex(0);
+        setSelectedAnswers({});
+        setSubmissionResult(null);
+        setTimerStarted(false);
+        autoSubmittedRef.current = false;
+        Alert.alert("Thông báo", "Đang tiếp tục lượt làm trước đó.");
+        return;
+      }
+
       Alert.alert(
         "Không thể tạo lượt làm mới",
         getApiErrorMessage(error, "Vui lòng thử lại sau."),
@@ -169,7 +212,8 @@ export default function QuizLessonScreen({
         quizLessonId: resolvedQuizLessonId,
         userId: currentUserId ? String(currentUserId) : undefined,
         page: 1,
-        size: 1,
+        size: 20,
+        sort: "startTime,desc",
       }),
     enabled: resolvedQuizLessonId.length > 0,
     retry: false,
@@ -221,7 +265,7 @@ export default function QuizLessonScreen({
       setSubmissionResult(result.data ?? null);
     },
   });
-  
+
   const completeLessonMutation = useMutation({
     mutationFn: async () => {
       await LearningProgressControllerService.markItemAsComplete({
@@ -305,7 +349,7 @@ export default function QuizLessonScreen({
     autoSubmittedRef.current = true;
     void handleSubmitQuiz(true);
   }, [quizSessionId, submissionResult, timeRemaining, timerStarted]);
-  
+
   useEffect(() => {
     setIsLessonCompleted(completedLessonIds.includes(lessonId));
   }, [completedLessonIds, lessonId]);
@@ -403,7 +447,7 @@ export default function QuizLessonScreen({
         fromTimeout ? "Hết giờ" : "Đã nộp bài",
         `Điểm: ${score} | Câu đúng: ${totalCorrect}`,
       );
-      
+
       if (!completedLessonIds.includes(lessonId)) {
         setIsLessonCompleted(true);
         void completeLessonMutation.mutateAsync();

@@ -38,6 +38,7 @@ import type {
 } from "../../types/explore";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { useAuthStore } from "../../store/useAuthStore";
+import { formatPriceK, resolvePricing } from "../../utils/pricing";
 
 const FALLBACK_COURSE_IMAGE =
   "https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1200&q=80";
@@ -91,23 +92,13 @@ const formatLearners = (value: number | undefined): string => {
   return `${count} học viên`;
 };
 
-const formatPriceLabel = (price: number | string | undefined): string => {
-  const numeric = Number(price ?? 0);
-
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return "Miễn phí";
-  }
-
-  const thousands = numeric / 1000;
-
-  if (Number.isInteger(thousands)) {
-    return `${Math.round(thousands).toLocaleString("vi-VN")}k`;
-  }
-
-  return `${Number(thousands.toFixed(1)).toLocaleString("vi-VN")}k`;
-};
-
 const mapCourseItem = (item: ExploreCourseApi): ExploreCourseItem => {
+  const pricing = resolvePricing(
+    item.price,
+    (item as { discountedPrice?: number; discounted_price?: number })
+      .discountedPrice ??
+      (item as { discounted_price?: number }).discounted_price,
+  );
   const resolvedCategory =
     typeof item.category === "string"
       ? { id: "", name: item.category }
@@ -129,7 +120,10 @@ const mapCourseItem = (item: ExploreCourseApi): ExploreCourseItem => {
     learnersLabel: formatLearners(
       item.enrollmentCount ?? item.enrollment_count,
     ),
-    priceLabel: formatPriceLabel(item.price),
+    priceLabel: formatPriceK(pricing.currentPrice),
+    oldPriceLabel: pricing.hasDiscount
+      ? formatPriceK(pricing.originalPrice)
+      : undefined,
     imageUrl: item.thumbnailUrl ?? item.thumbnail_url ?? FALLBACK_COURSE_IMAGE,
   };
 };
@@ -147,6 +141,7 @@ const mapFeaturedCourse = (
     rating: 4.8,
     learnersLabel: mapped?.learnersLabel ?? "0 học viên",
     priceLabel: mapped?.priceLabel ?? "Miễn phí",
+    oldPriceLabel: mapped?.oldPriceLabel,
     tagLabel: mapped?.categoryLabel ?? "Mới",
     imageUrl: mapped?.imageUrl ?? FALLBACK_COURSE_IMAGE,
   };
@@ -398,6 +393,11 @@ export default function ExploreScreen(): ReactElement {
                 </View>
 
                 <View className="absolute bottom-3 right-3 rounded-full bg-white/90 px-3 py-1.5">
+                  {featuredCourse.oldPriceLabel ? (
+                    <Text className="text-[10px] font-semibold text-slate-500 line-through">
+                      {featuredCourse.oldPriceLabel}
+                    </Text>
+                  ) : null}
                   <Text className="text-xs font-bold text-slate-900">
                     {featuredCourse.priceLabel}
                   </Text>
@@ -523,7 +523,7 @@ export default function ExploreScreen(): ReactElement {
       <AppScreenBackground />
       <Animated.FlatList
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: 120, gap: 16 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -552,6 +552,7 @@ export default function ExploreScreen(): ReactElement {
             rating={item.rating}
             learnersLabel={item.learnersLabel}
             priceLabel={item.priceLabel}
+            oldPriceLabel={item.oldPriceLabel}
             imageUrl={item.imageUrl}
             categoryLabel={item.categoryLabel}
             onPress={() =>

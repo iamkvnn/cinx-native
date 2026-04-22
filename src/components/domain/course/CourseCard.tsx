@@ -24,6 +24,7 @@ type CourseCardProps = {
   onPress?: () => void;
   price?: number;
   priceLabel?: string;
+  oldPriceLabel?: string;
   buttonLabel?: string;
   instructor?: string;
   subtitle?: string;
@@ -43,6 +44,7 @@ export default function CourseCard({
   onPress,
   price,
   priceLabel,
+  oldPriceLabel,
   buttonLabel = "Thêm",
   instructor,
   subtitle,
@@ -153,9 +155,14 @@ export default function CourseCard({
             {displayInstructor}
           </Text>
           {footerRight ?? (
-            <Text style={isCompact ? styles.priceCompact : styles.priceLarge}>
-              {displayPriceLabel}
-            </Text>
+            <View style={styles.priceWrap}>
+              {oldPriceLabel ? (
+                <Text style={styles.oldPriceText}>{oldPriceLabel}</Text>
+              ) : null}
+              <Text style={isCompact ? styles.priceCompact : styles.priceLarge}>
+                {displayPriceLabel}
+              </Text>
+            </View>
           )}
         </View>
       </View>
@@ -285,6 +292,15 @@ const styles = StyleSheet.create({
     color: "#7c3aed",
     fontSize: 20,
     fontWeight: "900",
+  },
+  priceWrap: {
+    alignItems: "flex-end",
+  },
+  oldPriceText: {
+    color: "#94a3b8",
+    fontSize: 10,
+    fontWeight: "700",
+    textDecorationLine: "line-through",
   },
   priceCompact: {
     color: "#7c3aed",

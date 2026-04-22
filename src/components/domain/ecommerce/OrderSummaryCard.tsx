@@ -7,10 +7,14 @@ interface OrderSummaryCardProps {
   orderCode: string;
   courseCount: number;
   orderTotalPrice: number;
+  coursePromotionDiscount: number;
+  voucherCode?: string;
+  voucherDiscountAmount: number;
   rewardPoints: number;
   useRewardPoints: boolean;
-  discountAmount: number;
+  rewardPointsDiscount: number;
   finalPrice: number;
+  rewardPointsDisabled?: boolean;
   onToggleUseRewardPoints: (value: boolean) => void;
 }
 
@@ -22,13 +26,17 @@ export default function OrderSummaryCard({
   orderCode,
   courseCount,
   orderTotalPrice,
+  coursePromotionDiscount,
+  voucherCode,
+  voucherDiscountAmount,
   rewardPoints,
   useRewardPoints,
-  discountAmount,
+  rewardPointsDiscount,
   finalPrice,
+  rewardPointsDisabled = false,
   onToggleUseRewardPoints,
 }: OrderSummaryCardProps): ReactElement {
-  const canUseRewardPoints = rewardPoints > 0;
+  const canUseRewardPoints = rewardPoints > 0 && !rewardPointsDisabled;
 
   return (
     <View
@@ -67,12 +75,34 @@ export default function OrderSummaryCard({
 
         <View className="my-1 h-px bg-slate-200/80" />
 
+        {coursePromotionDiscount > 0 ? (
+          <View className="flex-row items-center justify-between">
+            <Text className="text-xs font-semibold text-slate-500">
+              Giảm giá khóa học
+            </Text>
+            <Text className="text-sm font-bold text-emerald-600">
+              -{formatVnd(coursePromotionDiscount)}
+            </Text>
+          </View>
+        ) : null}
+
+        {voucherCode && voucherDiscountAmount > 0 ? (
+          <View className="flex-row items-center justify-between">
+            <Text className="text-xs font-semibold text-slate-500">
+              Voucher ({voucherCode})
+            </Text>
+            <Text className="text-sm font-bold text-emerald-600">
+              -{formatVnd(voucherDiscountAmount)}
+            </Text>
+          </View>
+        ) : null}
+
         {canUseRewardPoints ? (
           <View className="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2">
             <View className="flex-row items-center justify-between">
               <Text className="pr-2 text-xs font-semibold text-slate-600">
                 Dùng {rewardPoints.toLocaleString("vi-VN")} điểm thưởng (Giảm{" "}
-                {formatVnd(discountAmount)})
+                {formatVnd(rewardPointsDiscount)})
               </Text>
               <Switch
                 value={useRewardPoints}
@@ -81,6 +111,14 @@ export default function OrderSummaryCard({
                 thumbColor={useRewardPoints ? "#7c3aed" : "#f8fafc"}
               />
             </View>
+          </View>
+        ) : null}
+
+        {rewardPointsDisabled ? (
+          <View className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+            <Text className="text-xs font-semibold text-amber-700">
+              Đã áp dụng voucher, tạm thời không thể dùng điểm thưởng.
+            </Text>
           </View>
         ) : null}
 

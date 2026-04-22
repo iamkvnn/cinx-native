@@ -30,7 +30,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
   MenuItem,
   MenuSection,
-  SettingToggleItem,
 } from "../../components/domain/profile/ProfileMenuItems";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type {
@@ -97,8 +96,6 @@ export default function ProfileScreen(): ReactElement {
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const [refreshing, setRefreshing] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [darkModeEnabled, setDarkModeEnabled] = useState(false);
 
   const userProfileQuery = useQuery({
     queryKey: ["user-profile"],
@@ -650,15 +647,17 @@ export default function ProfileScreen(): ReactElement {
           </Text>
         </View>
 
-        <MenuSection title="Học tập & Thành tích">
-          <MenuItem
-            icon="star"
-            title="Chứng chỉ của tôi"
-            color="orange"
-            onPress={() => navigateRoot("MyCertificates")}
-            showLeadingIcon={false}
-          />
-        </MenuSection>
+        {user?.role !== "INSTRUCTOR" && (
+          <MenuSection title="Học tập & Thành tích">
+            <MenuItem
+              icon="star"
+              title="Chứng chỉ của tôi"
+              color="orange"
+              onPress={() => navigateRoot("MyCertificates")}
+              showLeadingIcon={false}
+            />
+          </MenuSection>
+        )}
 
         <MenuSection title="Giao dịch">
           <MenuItem
@@ -668,20 +667,24 @@ export default function ProfileScreen(): ReactElement {
             showLeadingIcon={false}
             onPress={() => navigateRoot("Notifications")}
           />
-          <MenuItem
-            icon="receipt"
-            title="Lịch sử đơn hàng"
-            color="violet"
-            showLeadingIcon={false}
-            onPress={() => navigateRoot("OrderHistory")}
-          />
-          <MenuItem
-            icon="ticket"
-            title="Mã giảm giá"
-            color="pink"
-            showLeadingIcon={false}
-            onPress={() => navigateRoot("Vouchers")}
-          />
+          {user?.role !== "INSTRUCTOR" && (
+            <>
+              <MenuItem
+                icon="receipt"
+                title="Lịch sử đơn hàng"
+                color="violet"
+                showLeadingIcon={false}
+                onPress={() => navigateRoot("OrderHistory")}
+              />
+              <MenuItem
+                icon="ticket"
+                title="Mã giảm giá"
+                color="pink"
+                showLeadingIcon={false}
+                onPress={() => navigateRoot("Vouchers")}
+              />
+            </>
+          )}
         </MenuSection>
 
         <MenuSection title="Cài đặt ứng dụng">
@@ -712,20 +715,6 @@ export default function ProfileScreen(): ReactElement {
             color="orange"
             showLeadingIcon={false}
             onPress={() => openSensitiveModal("password")}
-          />
-          <SettingToggleItem
-            icon="notifications"
-            title="Thông báo"
-            value={notificationsEnabled}
-            showLeadingIcon={false}
-            onValueChange={setNotificationsEnabled}
-          />
-          <SettingToggleItem
-            icon="moon"
-            title="Chế độ tối"
-            value={darkModeEnabled}
-            showLeadingIcon={false}
-            onValueChange={setDarkModeEnabled}
           />
         </MenuSection>
 

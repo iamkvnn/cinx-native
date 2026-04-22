@@ -5,5 +5,8 @@
 export type UpdateProfileRequest = {
     name: string;
     gender?: 'MALE' | 'FEMALE';
+    isReceivePushNotification?: boolean;
+    avatarFileKey?: string;
+    cvFileKey?: string;
 };
 

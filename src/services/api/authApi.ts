@@ -10,6 +10,7 @@ import type {
 import { AuthControllerService } from "./AuthControllerService";
 import { UserControllerService } from "./UserControllerService";
 import type { AuthUser, LoginResult } from "../../types/auth";
+import { uploadAvatarToS3 } from "../../utils/uploadToS3";
 
 const mapUser = (user: UserDto | null | undefined): AuthUser | null => {
   if (!user) {
@@ -154,38 +155,27 @@ export const updateProfile = async ({
   bio?: string;
 }): Promise<AuthUser> => {
   const currentUserId = await getCurrentUserId();
+  const currentUser = await fetchCurrentUser();
 
-  let avatarPayload:
-    | Blob
-    | {
-        uri: string;
-        name: string;
-        type: string;
-      }
-    | undefined;
+  let avatarFileKey: string | undefined;
 
   if (avatarUri) {
     const isLocalUri = /^(file|content|ph):\/\//.test(avatarUri);
 
     if (isLocalUri) {
-      avatarPayload = {
-        uri: avatarUri,
-        name: `avatar-${Date.now()}.jpg`,
-        type: "image/jpeg",
-      };
-    } else {
-      try {
-        avatarPayload = await (await fetch(avatarUri)).blob();
-      } catch {
-        throw new Error("Không thể tải ảnh đại diện đã chọn.");
-      }
+      const fileName = `avatar-${Date.now()}.jpg`;
+      const uploadResult = await uploadAvatarToS3(avatarUri, fileName, "image/jpeg");
+      avatarFileKey = uploadResult.fileKey;
     }
   }
 
-  const userPayload: Record<string, unknown> = {};
+  const userPayload: Record<string, unknown> = {
+    name: fullName !== undefined ? fullName.trim() : currentUser?.fullName ?? "",
+    gender: currentUser?.gender ?? undefined,
+  };
 
-  if (fullName !== undefined) {
-    userPayload.name = fullName.trim();
+  if (avatarFileKey) {
+    userPayload.avatarFileKey = avatarFileKey;
   }
 
   if (bio !== undefined) {
@@ -194,10 +184,7 @@ export const updateProfile = async ({
 
   const response = await UserControllerService.updateUser({
     id: currentUserId,
-    formData: {
-      user: userPayload as never,
-      avatar: avatarPayload as never,
-    },
+    requestBody: userPayload as never,
   });
 
   const user = mapUser(response.data ?? null);

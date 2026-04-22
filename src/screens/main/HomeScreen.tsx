@@ -32,6 +32,7 @@ import {
 import { useAuthStore } from "../../store/useAuthStore";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { fetchCurrentUser } from "../../services/api/authApi";
+import { formatPriceK, resolvePricing } from "../../utils/pricing";
 
 type ContinueLearningItem = {
   id: string;
@@ -52,6 +53,7 @@ type RecommendationItem = {
   rating: number;
   learners: string;
   priceLabel: string;
+  oldPriceLabel?: string;
 };
 
 const FALLBACK_AVATAR = "https://i.pravatar.cc/150?u=default-user";
@@ -78,22 +80,6 @@ const formatLearners = (value: number | undefined): string => {
   return `${count} học viên`;
 };
 
-const formatPriceLabel = (price: number | string | undefined): string => {
-  const numeric = Number(price ?? 0);
-
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return "Miễn phí";
-  }
-
-  const thousands = numeric / 1000;
-
-  if (Number.isInteger(thousands)) {
-    return `${Math.round(thousands).toLocaleString("vi-VN")}k`;
-  }
-
-  return `${Number(thousands.toFixed(1)).toLocaleString("vi-VN")}k`;
-};
-
 const mapMyCourseToContinueLearning = (
   item: MyCourseApiItem,
   index: number,
@@ -118,6 +104,12 @@ const mapMyCourseToContinueLearning = (
 const mapRecommendationItem = (
   course: RecommendationCourseApi,
 ): RecommendationItem => {
+  const pricing = resolvePricing(
+    course.price,
+    (course as { discountedPrice?: number; discounted_price?: number })
+      .discountedPrice ??
+      (course as { discounted_price?: number }).discounted_price,
+  );
   const instructorName = course.instructor?.name ?? "Giảng viên";
 
   const categoryLabel =
@@ -134,7 +126,10 @@ const mapRecommendationItem = (
       course.thumbnailUrl ?? course.thumbnail_url ?? FALLBACK_COURSE_IMAGE,
     rating: 4.8,
     learners: formatLearners(course.enrollmentCount ?? course.enrollment_count),
-    priceLabel: formatPriceLabel(course.price),
+    priceLabel: formatPriceK(pricing.currentPrice),
+    oldPriceLabel: pricing.hasDiscount
+      ? formatPriceK(pricing.originalPrice)
+      : undefined,
   };
 };
 
@@ -589,6 +584,7 @@ export default function HomeScreen(): ReactElement {
               rating={item.rating}
               learnersLabel={item.learners}
               priceLabel={item.priceLabel}
+              oldPriceLabel={item.oldPriceLabel}
               imageUrl={item.imageUrl}
               categoryLabel={item.tag}
               key={item.id}

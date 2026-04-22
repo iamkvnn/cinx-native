@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type ReactElement } from "react";
 import {
   ActivityIndicator,
@@ -26,6 +26,7 @@ import OrderStatusFilter, {
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { fetchMyOrders, type OrderApi } from "../../services/api/orderApi";
+import { OrderControllerService } from "../../services/api/OrderControllerService";
 
 type PurchaseHistoryScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -62,8 +63,17 @@ export default function PurchaseHistoryScreen({
     queryFn: fetchMyOrders,
   });
 
+  const queryClient = useQueryClient();
+
   const cancelMutation = useMutation({
-    mutationFn: async () => Promise.resolve(),
+    mutationFn: async (orderId: string) => OrderControllerService.cancelOrder({ orderId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      notify("Hủy đơn hàng thành công.");
+    },
+    onError: (error) => {
+      notify("Không thể hủy đơn hàng.");
+    }
   });
 
   const filteredOrders = useMemo<OrderApi[]>(() => {
@@ -99,17 +109,18 @@ export default function PurchaseHistoryScreen({
     }
 
     Alert.alert(
-      "Chưa hỗ trợ hủy đơn",
-      "Backend hiện chưa có endpoint hủy đơn hàng.",
+      "Xác nhận",
+      "Bạn có chắc chắn muốn hủy đơn hàng này không?",
       [
         {
           text: "Đóng",
           style: "cancel",
         },
         {
-          text: "Thanh toán đơn",
+          text: "Hủy đơn",
+          style: "destructive",
           onPress: () => {
-            navigation.navigate("Checkout", { orderId });
+            cancelMutation.mutate(orderId);
           },
         },
       ],

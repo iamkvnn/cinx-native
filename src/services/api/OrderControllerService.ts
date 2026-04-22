@@ -27,6 +27,17 @@ export class OrderControllerService {
         });
     }
     /**
+     * @returns ApiResponseOrderDetailResponse OK
+     * @throws ApiError
+     */
+    public static cancelOrder({
+        orderId,
+    }: {
+        orderId: string,
+    }): Promise<ApiResponseOrderDetailResponse> {
+        return axiosClient.put(`/api/v1/orders/${orderId}/cancel`);
+    }
+    /**
      * @returns ApiResponseOrderResponse OK
      * @throws ApiError
      */

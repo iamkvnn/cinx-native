@@ -7,6 +7,7 @@ export { CancelablePromise, CancelError } from './core/CancelablePromise';
 export { OpenAPI } from './core/OpenAPI';
 export type { OpenAPIConfig } from './core/OpenAPI';
 
+export type { ApiResponseDashboardMetricsResponse } from './models/ApiResponseDashboardMetricsResponse';
 export type { ApiResponseListCheckEnrollmentStatus } from './models/ApiResponseListCheckEnrollmentStatus';
 export type { ApiResponseObject } from './models/ApiResponseObject';
 export type { ApiResponseOrderDetailResponse } from './models/ApiResponseOrderDetailResponse';
@@ -17,8 +18,10 @@ export type { CategoryResponse } from './models/CategoryResponse';
 export type { CheckEnrollmentStatus } from './models/CheckEnrollmentStatus';
 export type { CourseImageResponse } from './models/CourseImageResponse';
 export type { CourseResponse } from './models/CourseResponse';
+export type { CourseStats } from './models/CourseStats';
 export type { CreateOrderRequest } from './models/CreateOrderRequest';
 export type { CreateVoucherRequest } from './models/CreateVoucherRequest';
+export type { DashboardMetricsResponse } from './models/DashboardMetricsResponse';
 export type { InstructorResponse } from './models/InstructorResponse';
 export type { OrderDetailResponse } from './models/OrderDetailResponse';
 export type { OrderItemResponse } from './models/OrderItemResponse';
@@ -33,4 +36,5 @@ export type { VoucherResponse } from './models/VoucherResponse';
 
 export { EnrollmentControllerService } from './services/EnrollmentControllerService';
 export { OrderControllerService } from './services/OrderControllerService';
+export { StatisticsControllerService } from './services/StatisticsControllerService';
 export { VoucherControllerService } from './services/VoucherControllerService';

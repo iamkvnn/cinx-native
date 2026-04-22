@@ -81,6 +81,7 @@ export function MyCertificatesScreen(
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 32 }}
         refreshControl={
           <RefreshControl
             refreshing={certificatesQuery.isRefetching}
@@ -104,7 +105,7 @@ export function MyCertificatesScreen(
             <ActivityIndicator size="large" color="#9333ea" />
           </View>
         ) : certificates.length === 0 ? (
-          <View className="mx-6 my-6 items-center justify-center rounded-3xl border border-white/70 bg-white/70 py-12">
+          <View className="mx-6 mb-6 flex-1 items-center justify-center rounded-3xl border border-white/70 bg-white/70 py-12">
             <Ionicons name="ribbon" size={30} color="#a78bfa" />
             <Text className="mt-4 text-sm font-bold text-slate-700">
               Bạn chưa có chứng chỉ nào
@@ -182,6 +183,7 @@ export function VouchersScreen(props: VoucherScreenProps): ReactElement {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 32 }}
         refreshControl={
           <RefreshControl
             refreshing={vouchersQuery.isRefetching}
@@ -203,7 +205,7 @@ export function VouchersScreen(props: VoucherScreenProps): ReactElement {
             <ActivityIndicator size="large" color="#9333ea" />
           </View>
         ) : vouchers.length === 0 ? (
-          <View className="mx-6 my-6 items-center justify-center rounded-3xl border border-white/70 bg-white/70 py-12">
+          <View className="mx-6 mb-6 flex-1 items-center justify-center rounded-3xl border border-white/70 bg-white/70 py-12">
             <Ionicons name="ticket" size={30} color="#ec4899" />
             <Text className="mt-4 text-sm font-bold text-slate-700">
               Chưa có voucher nào

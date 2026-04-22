@@ -39,6 +39,7 @@ import { ReviewControllerService } from "../../services/api/ReviewControllerServ
 import { LearningProgressControllerService } from "../../services/api/LearningProgressControllerService";
 import { useAuthStore } from "../../store/useAuthStore";
 import { extractCompletedLessonIds } from "../../utils/lessonFlow";
+import { formatPriceK as formatPriceKShared, resolvePricing } from "../../utils/pricing";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 
 type CourseDetailScreenProps = NativeStackScreenProps<
@@ -177,22 +178,6 @@ const showToast = (message: string): void => {
   Alert.alert("Thông báo", message);
 };
 
-const formatPriceK = (value: number | undefined): string => {
-  const numeric = Number(value ?? 0);
-
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return "Miễn phí";
-  }
-
-  const thousands = numeric / 1000;
-
-  if (Number.isInteger(thousands)) {
-    return `${Math.round(thousands).toLocaleString("vi-VN")}k`;
-  }
-
-  return `${Number(thousands.toFixed(1)).toLocaleString("vi-VN")}k`;
-};
-
 const readCategoryLabel = (category: unknown): string => {
   if (typeof category === "string" && category.trim().length > 0) {
     return category;
@@ -221,7 +206,6 @@ export default function CourseDetailScreen({
   const queryClient = useQueryClient();
   const scrollY = useState(new Animated.Value(0))[0];
   const [activeTab, setActiveTab] = useState<CourseTab>("about");
-  const [expandDescription, setExpandDescription] = useState(false);
   const [isAddingToCart, setIsAddingToCart] = useState(false);
   const [isBuyingNow, setIsBuyingNow] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
@@ -277,28 +261,22 @@ export default function CourseDetailScreen({
     return extractCompletedLessonIds(itemProgressQuery.data?.data);
   }, [itemProgressQuery.data?.data]);
 
-  const tabIndex = useMemo(() => {
-    if (activeTab === "about") return 0;
-    if (activeTab === "curriculum") return 1;
-    return 2;
-  }, [activeTab]);
-
   const imageUrl = course?.images?.[0]?.imageUrl ?? FALLBACK_IMAGE;
 
   const instructorName = course?.instructor?.name ?? "Giảng viên";
 
-  const ratingLabel = "4.9";
-  const ratingCountLabel = "12.5k đánh giá";
+  const ratingLabel = course?.rating ? course.rating.toFixed(1) : "0.0";
+  const ratingCountLabel = reviewsQuery.data?.length ? `${reviewsQuery.data.length} đánh giá` : "0 đánh giá";
   const learnersLabel = `${
     Number(course?.enrollmentCount ?? 0).toLocaleString("vi-VN") || "0"
   } học viên`;
 
-  const salePrice = formatPriceK(course?.price);
+  const coursePricing = resolvePricing(course?.price, course?.discountedPrice);
+  const salePrice = formatPriceKShared(coursePricing.currentPrice);
   const categoryLabel = readCategoryLabel(course?.category);
-  const oldPrice =
-    Number(course?.discountedPrice ?? 0) > 0
-      ? formatPriceK(course?.price)
-      : null;
+  const oldPrice = coursePricing.hasDiscount
+    ? formatPriceKShared(coursePricing.originalPrice)
+    : null;
 
   const isPurchased = useMemo(() => {
     if (!user) {
@@ -360,6 +338,19 @@ export default function CourseDetailScreen({
         ),
       }));
   }, [course?.sections]);
+
+  const orderedLessons = useMemo(() => {
+    return sections.flatMap((section) => section.lessons ?? []);
+  }, [sections]);
+
+  const currentLearningLesson = useMemo(() => {
+    const firstIncompleteLesson = orderedLessons.find((lesson) => {
+      const lessonId = String(lesson.id ?? "").trim();
+      return lessonId.length > 0 && !completedLessonIds.includes(lessonId);
+    });
+
+    return firstIncompleteLesson ?? orderedLessons[0] ?? null;
+  }, [completedLessonIds, orderedLessons]);
 
   const pendingOrder = useMemo(() => {
     return (ordersQuery.data ?? []).find(
@@ -502,8 +493,22 @@ export default function CourseDetailScreen({
     }
   };
 
+  const handleOpenCurrentLesson = (): void => {
+    if (!isPurchased) {
+      showToast("Bạn cần sở hữu khóa học để bắt đầu học.");
+      return;
+    }
+
+    if (!currentLearningLesson) {
+      showToast("Khóa học chưa có bài học để tiếp tục.");
+      return;
+    }
+
+    handlePressLesson(currentLearningLesson);
+  };
+
   const handleContinueLearning = (): void => {
-    showToast("Chuyển sang màn hình Video (Coming soon)");
+    handleOpenCurrentLesson();
   };
 
   const handlePressLesson = (lesson: LessonResponse): void => {
@@ -606,7 +611,10 @@ export default function CourseDetailScreen({
         scrollEventThrottle={16}
       >
         <View className="px-4">
-          <View className="mb-6 mt-1 overflow-hidden rounded-[32px]">
+          <Pressable
+            className="mb-6 mt-1 overflow-hidden rounded-[32px]"
+            onPress={handleOpenCurrentLesson}
+          >
             <Image
               source={{ uri: imageUrl }}
               className="h-[210px] w-full"
@@ -631,12 +639,9 @@ export default function CourseDetailScreen({
                 </View>
               </View>
             ) : null}
-          </View>
+          </Pressable>
 
           <View className="mb-3 flex-row items-center gap-2">
-            <Text className="rounded-md bg-orange-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-orange-600">
-              Bestseller
-            </Text>
             <Text className="rounded-md bg-violet-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-violet-600">
               {categoryLabel}
             </Text>
@@ -705,12 +710,7 @@ export default function CourseDetailScreen({
             </View>
           </View>
 
-          <View className="mt-2 flex-row rounded-[20px] bg-slate-900/5 p-1">
-            <View
-              className="absolute bottom-1 top-1 rounded-2xl bg-white"
-              style={{ width: "33.333%", left: `${tabIndex * 33.333}%` }}
-            />
-
+          <View className="mt-2 flex-row overflow-hidden rounded-[20px] bg-slate-900/5 p-1">
             {[
               { key: "about" as const, label: "Tổng quan" },
               { key: "curriculum" as const, label: "Nội dung" },
@@ -718,7 +718,9 @@ export default function CourseDetailScreen({
             ].map((tab) => (
               <Pressable
                 key={tab.key}
-                className="z-10 flex-1 items-center justify-center py-3"
+                className={`z-10 flex-1 items-center justify-center rounded-2xl py-3 ${
+                  activeTab === tab.key ? "bg-white" : "bg-transparent"
+                }`}
                 onPress={() => setActiveTab(tab.key)}
               >
                 <Text
@@ -737,8 +739,7 @@ export default function CourseDetailScreen({
               description={
                 course.description ?? "Mô tả khóa học đang được cập nhật."
               }
-              expanded={expandDescription}
-              onToggleExpanded={() => setExpandDescription((value) => !value)}
+              duration={course.duration}
             />
           ) : null}
 
