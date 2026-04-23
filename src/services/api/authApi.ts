@@ -79,6 +79,7 @@ export const register = async ({
   name,
   role,
   gender,
+  cvFileKey,
 }: RegisterRequest & {
   fullName?: string;
   name?: string;
@@ -96,6 +97,35 @@ export const register = async ({
       password,
       role: role ?? "USER",
       gender,
+      cvFileKey,
+    },
+  });
+};
+
+export const sendForgotPasswordOtp = async ({
+  email,
+}: {
+  email: string;
+}): Promise<void> => {
+  await AuthControllerService.resendOtp({
+    requestBody: { email },
+  });
+};
+
+export const resetPassword = async ({
+  email,
+  otp,
+  newPassword,
+}: {
+  email: string;
+  otp: string;
+  newPassword: string;
+}): Promise<void> => {
+  await AuthControllerService.resetPassword({
+    requestBody: {
+      email,
+      otp,
+      newPassword,
     },
   });
 };
@@ -164,13 +194,18 @@ export const updateProfile = async ({
 
     if (isLocalUri) {
       const fileName = `avatar-${Date.now()}.jpg`;
-      const uploadResult = await uploadAvatarToS3(avatarUri, fileName, "image/jpeg");
+      const uploadResult = await uploadAvatarToS3(
+        avatarUri,
+        fileName,
+        "image/jpeg",
+      );
       avatarFileKey = uploadResult.fileKey;
     }
   }
 
   const userPayload: Record<string, unknown> = {
-    name: fullName !== undefined ? fullName.trim() : currentUser?.fullName ?? "",
+    name:
+      fullName !== undefined ? fullName.trim() : (currentUser?.fullName ?? ""),
     gender: currentUser?.gender ?? undefined,
   };
 
@@ -198,22 +233,24 @@ export const updateProfile = async ({
 
 export const updateSensitiveInfo = async ({
   otp,
+  oldPassword,
   newEmail,
   newPhone,
   newPassword,
 }: {
   otp: string;
+  oldPassword?: string;
   newEmail?: string;
   newPhone?: string;
   newPassword?: string;
 }): Promise<AuthUser> => {
   const currentUser = await fetchCurrentUser();
 
-  if (!currentUser?.email) {
-    throw new Error("Không tìm thấy thông tin người dùng hiện tại.");
-  }
-
   if (newEmail) {
+    if (!currentUser?.email) {
+      throw new Error("Không tìm thấy thông tin người dùng hiện tại.");
+    }
+
     await AuthControllerService.changeEmail({
       requestBody: {
         oldEmail: currentUser.email,
@@ -221,14 +258,20 @@ export const updateSensitiveInfo = async ({
         newEmail,
       },
     });
-  } else if (newPassword) {
-    await AuthControllerService.resetPassword({
+  } else if (oldPassword && newPassword) {
+    if (!currentUser?.email) {
+      throw new Error("Không tìm thấy email người dùng hiện tại.");
+    }
+
+    await AuthControllerService.changePassword({
       requestBody: {
         email: currentUser.email,
-        otp,
+        oldPassword,
         newPassword,
       },
     });
+  } else if (newPassword) {
+    throw new Error("Thiếu mật khẩu cũ để đổi mật khẩu.");
   } else if (newPhone) {
     throw new Error("Backend mới chưa hỗ trợ đổi số điện thoại.");
   }

@@ -17,21 +17,20 @@ import { Ionicons } from "@expo/vector-icons";
 import { CourseControllerService, OpenAPI } from "../../api/course";
 import { useAuthStore } from "../../store/useAuthStore";
 import { RootStackParamList } from "../../navigation/AppNavigator";
+import {
+  getCourseLifecycleColor,
+  getCourseLifecycleLabel,
+  getCourseLifecycleStatus,
+  isCoursePublished,
+  type CourseLifecycleStatus,
+} from "../../utils/courseStatus";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-const STATUS_COLOR: Record<string, string> = {
-  DRAFT: "#94a3b8",
-  WAITING_APPROVAL: "#f59e0b",
-  PUBLISHED: "#10b981",
-  REJECTED: "#ef4444",
-  ARCHIVED: "#64748b",
-};
 
 export default function InstructorCoursesScreen() {
   const user = useAuthStore((state) => state.user);
   const navigation = useNavigation<NavigationProp>();
-  const [activeTab, setActiveTab] = useState<"pending" | "published">("pending");
+  const [activeTab, setActiveTab] = useState<CourseLifecycleStatus>("DRAFT");
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["instructor-courses", user?.id],
@@ -49,33 +48,73 @@ export default function InstructorCoursesScreen() {
   useFocusEffect(
     useCallback(() => {
       refetch();
-    }, [refetch])
+    }, [refetch]),
   );
 
   const allCourses = data?.data ?? [];
 
-  // Tab "Chờ duyệt": isPublished == false
-  const pendingCourses = allCourses.filter(
-    (c: any) => !c.isPublished
-  );
+  const coursesByStatus: Record<CourseLifecycleStatus, any[]> = {
+    DRAFT: [],
+    WAITING_APPROVAL: [],
+    PUBLISHED: [],
+    REJECTED: [],
+    ARCHIVED: [],
+  };
 
-  // Tab "Đã duyệt": isPublished == true
-  const publishedCourses = allCourses.filter(
-    (c: any) => c.isPublished
-  );
+  allCourses.forEach((course: any) => {
+    const status = getCourseLifecycleStatus(course);
+    coursesByStatus[status].push(course);
+  });
 
-  const courses = activeTab === "pending" ? pendingCourses : publishedCourses;
+  const courses = coursesByStatus[activeTab] ?? [];
+
+  const tabConfig: Array<{
+    key: CourseLifecycleStatus;
+    label: string;
+    emptyTitle: string;
+    emptyText: string;
+  }> = [
+    {
+      key: "DRAFT",
+      label: "Bản nháp",
+      emptyTitle: "Không có khoá học bản nháp",
+      emptyText: "Các khoá học đang soạn thảo sẽ hiển thị ở đây.",
+    },
+    {
+      key: "WAITING_APPROVAL",
+      label: "Chờ duyệt",
+      emptyTitle: "Không có khoá học chờ duyệt",
+      emptyText: "Những khoá đã gửi admin duyệt sẽ nằm ở đây.",
+    },
+    {
+      key: "PUBLISHED",
+      label: "Đã công khai",
+      emptyTitle: "Chưa có khoá học công khai",
+      emptyText:
+        "Khoá học đã được admin duyệt và công khai sẽ xuất hiện ở đây.",
+    },
+    {
+      key: "REJECTED",
+      label: "Bị từ chối",
+      emptyTitle: "Không có khoá học bị từ chối",
+      emptyText:
+        "Khoá học bị admin từ chối sẽ hiển thị ở đây để bạn chỉnh sửa lại.",
+    },
+  ];
 
   const renderItem = ({ item }: { item: any }) => {
-    const isPub = Boolean(item.isPublished);
-    const statusColor = isPub ? "#10b981" : "#f59e0b";
-    const statusLabel = isPub ? "Đã duyệt" : "Chưa duyệt";
-    const thumbUrl = item.images?.[0]?.imageUrl ?? item.images?.[0]?.url ?? null;
+    const statusColor = getCourseLifecycleColor(item);
+    const statusLabel = getCourseLifecycleLabel(item);
+    const courseStatus = getCourseLifecycleStatus(item);
+    const thumbUrl =
+      item.images?.[0]?.imageUrl ?? item.images?.[0]?.url ?? null;
 
     return (
       <Pressable
         style={styles.courseCard}
-        onPress={() => navigation.navigate("CourseManagement", { courseId: item.id })}
+        onPress={() =>
+          navigation.navigate("CourseManagement", { courseId: item.id })
+        }
       >
         {thumbUrl ? (
           <Image source={{ uri: thumbUrl }} style={styles.courseThumbnail} />
@@ -85,15 +124,37 @@ export default function InstructorCoursesScreen() {
           </View>
         )}
         <View style={styles.courseInfo}>
-          <Text style={styles.courseTitle} numberOfLines={2}>{item.title}</Text>
+          <Text style={styles.courseTitle} numberOfLines={2}>
+            {item.title}
+          </Text>
           <View style={styles.courseMeta}>
-            <View style={[styles.statusBadge, { backgroundColor: statusColor + "22" }]}>
-              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-              <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: statusColor + "22" },
+              ]}
+            >
+              <View
+                style={[styles.statusDot, { backgroundColor: statusColor }]}
+              />
+              <Text style={[styles.statusText, { color: statusColor }]}>
+                {statusLabel}
+              </Text>
             </View>
+            <Text style={styles.courseStateText}>
+              {courseStatus === "PUBLISHED"
+                ? "Đã công khai"
+                : courseStatus === "WAITING_APPROVAL"
+                  ? "Đang chờ admin duyệt"
+                  : courseStatus === "REJECTED"
+                    ? "Bị từ chối, cần cập nhật lại"
+                    : "Bản nháp"}
+            </Text>
             {item.price != null && (
               <Text style={styles.priceText}>
-                {item.price === 0 ? "Miễn phí" : `${item.price?.toLocaleString()} ₫`}
+                {item.price === 0
+                  ? "Miễn phí"
+                  : `${item.price?.toLocaleString()} ₫`}
               </Text>
             )}
           </View>
@@ -119,36 +180,35 @@ export default function InstructorCoursesScreen() {
 
       {/* Tabs */}
       <View style={styles.tabBar}>
-        <Pressable
-          style={[styles.tab, activeTab === "pending" && styles.tabActive]}
-          onPress={() => setActiveTab("pending")}
-        >
-          <Text style={[styles.tabText, activeTab === "pending" && styles.tabTextActive]}>
-            Chờ duyệt
-          </Text>
-          {pendingCourses.length > 0 && (
-            <View style={styles.tabBadge}>
-              <Text style={styles.tabBadgeText}>{pendingCourses.length}</Text>
-            </View>
-          )}
-        </Pressable>
-        <Pressable
-          style={[styles.tab, activeTab === "published" && styles.tabActive]}
-          onPress={() => setActiveTab("published")}
-        >
-          <Text style={[styles.tabText, activeTab === "published" && styles.tabTextActive]}>
-            Đã duyệt
-          </Text>
-          {publishedCourses.length > 0 && (
-            <View style={[styles.tabBadge, { backgroundColor: "#10b981" }]}>
-              <Text style={styles.tabBadgeText}>{publishedCourses.length}</Text>
-            </View>
-          )}
-        </Pressable>
+        {tabConfig.map((tab) => {
+          const isActive = activeTab === tab.key;
+          const count = coursesByStatus[tab.key]?.length ?? 0;
+
+          return (
+            <Pressable
+              key={tab.key}
+              style={[styles.tab, isActive && styles.tabActive]}
+              onPress={() => setActiveTab(tab.key)}
+            >
+              <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                {tab.label}
+              </Text>
+              {count > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>{count}</Text>
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
       </View>
 
       {isLoading ? (
-        <ActivityIndicator size="large" color="#7958ee" style={{ marginTop: 40 }} />
+        <ActivityIndicator
+          size="large"
+          color="#7958ee"
+          style={{ marginTop: 40 }}
+        />
       ) : (
         <FlatList
           data={courses}
@@ -161,12 +221,12 @@ export default function InstructorCoursesScreen() {
             <View style={styles.emptyContainer}>
               <Ionicons name="book-outline" size={64} color="#c4b5fd" />
               <Text style={styles.emptyTitle}>
-                {activeTab === "pending" ? "Không có khoá học chờ duyệt" : "Chưa có khoá học nào được duyệt"}
+                {tabConfig.find((tab) => tab.key === activeTab)?.emptyTitle ??
+                  "Không có khoá học"}
               </Text>
               <Text style={styles.emptyText}>
-                {activeTab === "pending"
-                  ? "Bấm \"Tạo mới\" để bắt đầu xây dựng khoá học đầu tiên."
-                  : "Các khoá học sau khi được admin duyệt sẽ hiển thị ở đây."}
+                {tabConfig.find((tab) => tab.key === activeTab)?.emptyText ??
+                  ""}
               </Text>
             </View>
           }
@@ -252,8 +312,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   courseInfo: { flex: 1, paddingVertical: 10 },
-  courseTitle: { fontSize: 14, fontWeight: "700", color: "#1e293b", marginBottom: 6 },
-  courseMeta: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  courseTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1e293b",
+    marginBottom: 6,
+  },
+  courseMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -264,8 +334,19 @@ const styles = StyleSheet.create({
   },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 11, fontWeight: "700" },
+  courseStateText: { fontSize: 11, fontWeight: "600", color: "#64748b" },
   priceText: { fontSize: 12, color: "#7958ee", fontWeight: "600" },
   emptyContainer: { alignItems: "center", paddingTop: 80, gap: 12 },
-  emptyTitle: { fontSize: 18, fontWeight: "bold", color: "#334155", textAlign: "center" },
-  emptyText: { color: "#94a3b8", textAlign: "center", paddingHorizontal: 40, lineHeight: 22 },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#334155",
+    textAlign: "center",
+  },
+  emptyText: {
+    color: "#94a3b8",
+    textAlign: "center",
+    paddingHorizontal: 40,
+    lineHeight: 22,
+  },
 });

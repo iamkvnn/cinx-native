@@ -95,7 +95,6 @@ export default function CheckoutScreen({
   const user = useAuthStore((state) => state.user);
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("momo");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [useRewardPoints, setUseRewardPoints] = useState(false);
   const [isWaitingPaymentResult, setIsWaitingPaymentResult] = useState(false);
   const [voucherCodeInput, setVoucherCodeInput] = useState("");
   const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
@@ -161,27 +160,11 @@ export default function CheckoutScreen({
     0,
     totalAmount - serverDiscountAmount,
   );
-  const rewardPointsDisabled = appliedVoucherCode.length > 0;
-  const rewardPoints = Number(user?.rewardPoints ?? 0);
-  const maxDiscount = rewardPoints * 1000;
-  const rewardPointsDiscount =
-    useRewardPoints && !rewardPointsDisabled
-      ? Math.min(maxDiscount, subtotalAfterServerDiscount)
-      : 0;
-  const finalPrice = Math.max(
-    0,
-    subtotalAfterServerDiscount - rewardPointsDiscount,
-  );
+  const finalPrice = Math.max(0, subtotalAfterServerDiscount);
 
   useEffect(() => {
     setVoucherCodeInput(appliedVoucherCode);
   }, [appliedVoucherCode]);
-
-  useEffect(() => {
-    if (rewardPointsDisabled && useRewardPoints) {
-      setUseRewardPoints(false);
-    }
-  }, [rewardPointsDisabled, useRewardPoints]);
 
   const finalizePaidOrder = async (): Promise<void> => {
     if (paidHandledRef.current) {
@@ -276,7 +259,7 @@ export default function CheckoutScreen({
     try {
       setIsProcessing(true);
       const result = await confirmPayment(orderId, {
-        useRewardPoints,
+        useRewardPoints: false,
         paymentMethod: selectedMethod === "momo" ? "MOMO" : "VN_PAY",
       });
 
@@ -382,7 +365,6 @@ export default function CheckoutScreen({
         paymentMethod: selectedMethod === "momo" ? "MOMO" : "VN_PAY",
       });
 
-      setUseRewardPoints(false);
       setVoucherHint(`Đã áp dụng voucher ${code.toUpperCase()}.`);
       navigation.replace("Checkout", { orderId: String(recreated.id ?? "") });
     } catch (error) {
@@ -514,9 +496,14 @@ export default function CheckoutScreen({
           <Text className="text-sm font-bold text-slate-800">
             Thông tin nhận khóa học
           </Text>
-          <Text className="mt-1 text-xs font-medium text-slate-500">
-            Mã đơn: {orderCode}
-          </Text>
+          <View className="mt-2 flex-row items-center justify-between gap-2">
+            <Text className="text-xs font-semibold text-slate-500">Mã đơn</Text>
+            <View className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1">
+              <Text className="text-xs font-bold tracking-wide text-slate-700">
+                {orderCode}
+              </Text>
+            </View>
+          </View>
           <Text className="mt-2 text-sm font-semibold text-slate-700">
             Trạng thái:{" "}
             {String(orderQuery.data.status ?? "pending").toUpperCase()}
@@ -643,12 +630,7 @@ export default function CheckoutScreen({
             coursePromotionDiscount={coursePromotionDiscount}
             voucherCode={appliedVoucherCode || undefined}
             voucherDiscountAmount={voucherDiscountAmount}
-            rewardPoints={rewardPoints}
-            useRewardPoints={useRewardPoints}
-            rewardPointsDiscount={rewardPointsDiscount}
             finalPrice={finalPrice}
-            rewardPointsDisabled={rewardPointsDisabled}
-            onToggleUseRewardPoints={setUseRewardPoints}
           />
         </View>
       </ScrollView>
@@ -662,7 +644,7 @@ export default function CheckoutScreen({
             Tổng thanh toán:
           </Text>
           <View className="items-end">
-            {serverDiscountAmount > 0 || useRewardPoints ? (
+            {serverDiscountAmount > 0 ? (
               <Text className="text-xs font-semibold text-slate-400 line-through">
                 {formatVnd(totalAmount)}
               </Text>

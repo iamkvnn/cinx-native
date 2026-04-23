@@ -118,6 +118,9 @@ export default function ProfileScreen(): ReactElement {
   const [sensitiveKind, setSensitiveKind] = useState<SensitiveKind>("email");
   const [sensitiveValue, setSensitiveValue] = useState("");
   const [confirmSensitiveValue, setConfirmSensitiveValue] = useState("");
+  const [currentPasswordValue, setCurrentPasswordValue] = useState("");
+  const [newPasswordValue, setNewPasswordValue] = useState("");
+  const [confirmNewPasswordValue, setConfirmNewPasswordValue] = useState("");
   const [sensitiveStep, setSensitiveStep] = useState<1 | 2>(1);
   const [otpCode, setOtpCode] = useState("");
   const [isSendingSensitiveOtp, setIsSendingSensitiveOtp] = useState(false);
@@ -125,6 +128,7 @@ export default function ProfileScreen(): ReactElement {
 
   const fullNameInputRef = useRef<TextInput | null>(null);
   const sensitiveValueInputRef = useRef<TextInput | null>(null);
+  const currentPasswordInputRef = useRef<TextInput | null>(null);
   const otpInputRef = useRef<TextInput | null>(null);
   const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -268,13 +272,20 @@ export default function ProfileScreen(): ReactElement {
         ? 360
         : activeModal === "edit-avatar"
           ? 360
-          : sensitiveStep === 2
+          : sensitiveKind === "password"
             ? 220
-            : 360;
+            : sensitiveStep === 2
+              ? 220
+              : 360;
 
     focusTimeoutRef.current = setTimeout(() => {
       if (activeModal === "edit-profile") {
         fullNameInputRef.current?.focus();
+        return;
+      }
+
+      if (sensitiveKind === "password") {
+        currentPasswordInputRef.current?.focus();
         return;
       }
 
@@ -291,7 +302,7 @@ export default function ProfileScreen(): ReactElement {
         clearTimeout(focusTimeoutRef.current);
       }
     };
-  }, [activeModal, sensitiveStep, shouldRenderModal]);
+  }, [activeModal, sensitiveKind, sensitiveStep, shouldRenderModal]);
 
   const closeModal = (): void => {
     if (
@@ -322,6 +333,9 @@ export default function ProfileScreen(): ReactElement {
     setSensitiveStep(1);
     setSensitiveValue("");
     setConfirmSensitiveValue("");
+    setCurrentPasswordValue("");
+    setNewPasswordValue("");
+    setConfirmNewPasswordValue("");
     setOtpCode("");
     setActiveModal("sensitive");
   };
@@ -481,18 +495,6 @@ export default function ProfileScreen(): ReactElement {
       return;
     }
 
-    if (sensitiveKind === "password") {
-      if (value.length < 6) {
-        notify("Mật khẩu mới cần ít nhất 6 ký tự.");
-        return;
-      }
-
-      if (value !== confirmSensitiveValue.trim()) {
-        notify("Xác nhận mật khẩu không khớp.");
-        return;
-      }
-    }
-
     try {
       setIsSendingSensitiveOtp(true);
       const payload =
@@ -521,9 +523,27 @@ export default function ProfileScreen(): ReactElement {
     }
 
     const value = sensitiveValue.trim();
+    const currentPassword = currentPasswordValue.trim();
+    const nextPassword = newPasswordValue.trim();
+    const confirmNewPassword = confirmNewPasswordValue.trim();
     const otp = otpCode.trim();
 
-    if (!otp || otp.length !== 6) {
+    if (sensitiveKind === "password") {
+      if (!currentPassword || !nextPassword || !confirmNewPassword) {
+        notify("Vui lòng nhập mật khẩu cũ và xác nhận mật khẩu mới.");
+        return;
+      }
+
+      if (currentPassword === nextPassword) {
+        notify("Mật khẩu mới phải khác mật khẩu cũ.");
+        return;
+      }
+
+      if (nextPassword !== confirmNewPassword) {
+        notify("Xác nhận mật khẩu mới không khớp.");
+        return;
+      }
+    } else if (!otp || otp.length !== 6) {
       notify("Vui lòng nhập OTP gồm 6 chữ số.");
       return;
     }
@@ -532,9 +552,10 @@ export default function ProfileScreen(): ReactElement {
       setIsSavingSensitiveInfo(true);
       const updatedUser = await updateSensitiveInfo({
         otp,
+        oldPassword: sensitiveKind === "password" ? currentPassword : undefined,
         newEmail: sensitiveKind === "email" ? value : undefined,
         newPhone: sensitiveKind === "phone" ? value : undefined,
-        newPassword: sensitiveKind === "password" ? value : undefined,
+        newPassword: sensitiveKind === "password" ? nextPassword : undefined,
       });
 
       if (sensitiveKind === "email" || sensitiveKind === "phone") {
@@ -554,13 +575,20 @@ export default function ProfileScreen(): ReactElement {
         )?.message;
 
         if ((status === 400 || status === 401) && message) {
-          Alert.alert("Xác thực OTP thất bại", message);
+          Alert.alert(
+            sensitiveKind === "password"
+              ? "Đổi mật khẩu thất bại"
+              : "Xác thực OTP thất bại",
+            message,
+          );
           return;
         }
       }
 
       Alert.alert(
-        "Xác thực OTP thất bại",
+        sensitiveKind === "password"
+          ? "Đổi mật khẩu thất bại"
+          : "Xác thực OTP thất bại",
         getApiErrorMessage(error, "Vui lòng thử lại sau."),
       );
     } finally {
@@ -884,7 +912,68 @@ export default function ProfileScreen(): ReactElement {
 
                 {activeModal === "sensitive" ? (
                   <>
-                    {sensitiveStep === 1 ? (
+                    {sensitiveKind === "password" ? (
+                      <>
+                        <View className="mb-3 rounded-2xl border border-white/80 bg-white/65 px-4 py-3">
+                          <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                            Mật khẩu cũ
+                          </Text>
+                          <TextInput
+                            ref={currentPasswordInputRef}
+                            value={currentPasswordValue}
+                            onChangeText={setCurrentPasswordValue}
+                            placeholder="Nhập mật khẩu cũ"
+                            secureTextEntry
+                            autoCapitalize="none"
+                            className="mt-1 text-sm font-semibold text-slate-800"
+                          />
+                        </View>
+
+                        <View className="mb-3 rounded-2xl border border-white/80 bg-white/65 px-4 py-3">
+                          <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                            Mật khẩu mới
+                          </Text>
+                          <TextInput
+                            value={newPasswordValue}
+                            onChangeText={setNewPasswordValue}
+                            placeholder="Nhập mật khẩu mới"
+                            secureTextEntry
+                            autoCapitalize="none"
+                            className="mt-1 text-sm font-semibold text-slate-800"
+                          />
+                        </View>
+
+                        <View className="mb-3 rounded-2xl border border-white/80 bg-white/65 px-4 py-3">
+                          <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                            Xác nhận mật khẩu mới
+                          </Text>
+                          <TextInput
+                            value={confirmNewPasswordValue}
+                            onChangeText={setConfirmNewPasswordValue}
+                            placeholder="Nhập lại mật khẩu mới"
+                            secureTextEntry
+                            autoCapitalize="none"
+                            className="mt-1 text-sm font-semibold text-slate-800"
+                          />
+                        </View>
+
+                        <Pressable
+                          onPress={() => {
+                            void handleSaveSensitiveInfo();
+                          }}
+                          disabled={isSavingSensitiveInfo}
+                          className="h-12 items-center justify-center rounded-2xl bg-violet-600"
+                        >
+                          {isSavingSensitiveInfo ? (
+                            <ActivityIndicator size="small" color="#ffffff" />
+                          ) : (
+                            <Text className="text-sm font-bold text-white">
+                              Lưu mật khẩu mới
+                            </Text>
+                          )}
+                        </Pressable>
+                      </>
+                    ) : sensitiveStep === 1 ? (
                       <>
                         <View className="mb-3 rounded-2xl border border-white/80 bg-white/65 px-4 py-3">
                           <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
@@ -912,26 +1001,11 @@ export default function ProfileScreen(): ReactElement {
                                   ? "phone-pad"
                                   : "default"
                             }
-                            secureTextEntry={sensitiveKind === "password"}
+                            secureTextEntry={false}
                             autoCapitalize="none"
                             className="mt-1 text-sm font-semibold text-slate-800"
                           />
                         </View>
-
-                        {sensitiveKind === "password" ? (
-                          <View className="mb-3 rounded-2xl border border-white/80 bg-white/65 px-4 py-3">
-                            <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                              Xác nhận mật khẩu mới
-                            </Text>
-                            <TextInput
-                              value={confirmSensitiveValue}
-                              onChangeText={setConfirmSensitiveValue}
-                              placeholder="Nhập lại mật khẩu mới"
-                              secureTextEntry
-                              className="mt-1 text-sm font-semibold text-slate-800"
-                            />
-                          </View>
-                        ) : null}
 
                         <Pressable
                           onPress={() => {

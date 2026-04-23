@@ -35,6 +35,7 @@ export class CourseControllerService {
         size = 10,
         query,
         sort,
+        status,
         categoryId,
         instructorId,
     }: {
@@ -42,6 +43,7 @@ export class CourseControllerService {
         size?: number,
         query?: string,
         sort?: string,
+        status?: 'DRAFT' | 'WAITING_APPROVAL' | 'PUBLISHED' | 'REJECTED' | 'ARCHIVED',
         categoryId?: string,
         instructorId?: string,
     }): Promise<PaginatedApiResponseCourseResponse> {
@@ -51,6 +53,7 @@ export class CourseControllerService {
                 'size': size,
                 'query': query,
                 'sort': sort,
+                'status': status,
                 'categoryId': categoryId,
                 'instructorId': instructorId,
             },

@@ -1,13 +1,23 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@react-navigation/native";
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactElement,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -18,6 +28,7 @@ import type { AttachmentRequest } from "@/types";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { CourseDetailResponse } from "@/types";
 
+import LessonDrawer from "../../components/course/LessonDrawer";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { CourseControllerService } from "../../services/api/CourseControllerService";
@@ -32,6 +43,7 @@ import {
   findPreviousLesson,
   findNextLesson,
   getLessonRouteName,
+  type LessonRouteName,
 } from "../../utils/lessonFlow";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
@@ -47,6 +59,30 @@ type PendingAttachment = {
   fileSize: number;
   fileKey: string;
 };
+
+const formatDateTime = (value?: string | null): string => {
+  const raw = String(value ?? "").trim();
+
+  if (!raw) {
+    return "(chưa có)";
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return raw;
+  }
+
+  return parsed.toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const sanitizeFileName = (value: string): string =>
+  value.replace(/[^a-zA-Z0-9._ -]+/g, "_").trim() || "attachment";
 
 export default function AssignmentLessonScreen({
   route,
@@ -64,6 +100,7 @@ export default function AssignmentLessonScreen({
   const [content, setContent] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [isLessonCompleted, setIsLessonCompleted] = useState(false);
+  const [isLessonDrawerOpen, setIsLessonDrawerOpen] = useState(false);
 
   const courseQuery = useQuery<CourseDetailResponse | null>({
     queryKey: ["lesson-course", courseId],
@@ -112,6 +149,19 @@ export default function AssignmentLessonScreen({
       initialTab: "curriculum",
     });
   };
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          className="mr-1 h-9 w-9 items-center justify-center"
+          onPress={() => setIsLessonDrawerOpen((previous) => !previous)}
+        >
+          <Ionicons name="menu-outline" size={20} color="#334155" />
+        </Pressable>
+      ),
+    });
+  }, [navigation]);
 
   const getApiErrorMessage = (error: unknown, fallback: string): string => {
     if (axios.isAxiosError(error)) {
@@ -172,6 +222,7 @@ export default function AssignmentLessonScreen({
 
   const currentSubmission = submissionQuery.data?.data;
   const currentSubmissionId = String(currentSubmission?.id ?? "").trim();
+  const assignmentAttachments = assignmentQuery.data?.data?.attachments ?? [];
 
   useEffect(() => {
     setIsLessonCompleted(
@@ -347,6 +398,43 @@ export default function AssignmentLessonScreen({
     setAttachments((previous) => previous.filter((item) => item.id !== id));
   };
 
+  const handleDownloadAttachment = async (
+    file: (typeof assignmentAttachments)[number],
+  ): Promise<void> => {
+    const fileUrl = String(file.attachmentUrl ?? "").trim();
+    if (!fileUrl) {
+      Alert.alert("Thông báo", "Tệp này chưa có đường dẫn để tải xuống.");
+      return;
+    }
+
+    const fileName = sanitizeFileName(
+      String(file.fileName ?? "attachment").trim(),
+    );
+
+    try {
+      const canShare = await Sharing.isAvailableAsync();
+
+      if (!canShare) {
+        await Linking.openURL(fileUrl);
+        return;
+      }
+
+      const downloadedFile = await FileSystem.File.downloadFileAsync(
+        fileUrl,
+        new FileSystem.File(FileSystem.Paths.cache, `${Date.now()}-${fileName}`),
+      );
+      await Sharing.shareAsync(downloadedFile.uri, {
+        mimeType: file.fileType ?? "application/octet-stream",
+        dialogTitle: fileName,
+      });
+    } catch (error) {
+      Alert.alert(
+        "Lỗi",
+        error instanceof Error ? error.message : "Không thể tải file.",
+      );
+    }
+  };
+
   const canSubmit = useMemo(() => {
     if (!hasAssignmentId) {
       return false;
@@ -445,6 +533,50 @@ export default function AssignmentLessonScreen({
     }
   };
 
+  const handleSelectLessonFromDrawer = (
+    routeName: LessonRouteName,
+    targetLessonId: string,
+    targetLessonTitle: string,
+  ): void => {
+    if (!targetLessonId || targetLessonId === lessonId) {
+      setIsLessonDrawerOpen(false);
+      return;
+    }
+
+    switch (routeName) {
+      case "VideoLesson":
+        navigation.replace("VideoLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+      case "ArticleLesson":
+        navigation.replace("ArticleLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+      case "QuizLesson":
+        navigation.replace("QuizLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+      case "AssignmentLesson":
+        navigation.replace("AssignmentLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+    }
+
+    setIsLessonDrawerOpen(false);
+  };
+
   if (assignmentQuery.isLoading) {
     return (
       <SafeAreaView
@@ -467,7 +599,13 @@ export default function AssignmentLessonScreen({
         className="flex-1"
         contentContainerClassName="px-4 pt-0 pb-8 gap-4"
       >
-        <View className="rounded-3xl border border-white/70 bg-white/75 p-4 gap-2">
+        <View
+          className={`rounded-3xl border p-4 gap-2 ${
+            currentSubmissionId
+              ? "border-emerald-200 bg-emerald-50"
+              : "border-white/70 bg-white/75"
+          }`}
+        >
           <Text className="text-lg font-black text-slate-800">
             {lessonTitle}
           </Text>
@@ -476,12 +614,42 @@ export default function AssignmentLessonScreen({
               "Chưa có mô tả assignment."}
           </Text>
           <Text className="text-xs font-semibold text-slate-600">
-            Hạn nộp: {assignmentQuery.data?.data?.dueDate ?? "(chưa có)"}
+            Hạn nộp: {formatDateTime(assignmentQuery.data?.data?.dueDate)}
           </Text>
           <Text className="text-xs font-semibold text-slate-600">
             Trạng thái: {currentSubmissionId ? "Đã nộp" : "Chưa nộp"}
           </Text>
         </View>
+
+        {assignmentAttachments.length > 0 ? (
+          <View className="rounded-3xl border border-white/70 bg-white/75 p-4 gap-2">
+            <Text className="text-sm font-bold text-slate-800">
+              File đính kèm của giảng viên
+            </Text>
+            <Text className="text-xs font-medium text-slate-500">
+              Bấm vào từng file để tải xuống.
+            </Text>
+            <View className="gap-2">
+              {assignmentAttachments.map((file, index) => {
+                const fileName = file.fileName ?? `Tệp đính kèm ${index + 1}`;
+
+                return (
+                  <Pressable
+                    key={String(file.id ?? fileName ?? index)}
+                    className="rounded-2xl border border-slate-200 bg-white px-3 py-3"
+                    onPress={() => {
+                      void handleDownloadAttachment(file);
+                    }}
+                  >
+                    <Text className="text-xs font-bold text-slate-800">
+                      {fileName}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
 
         <View className="rounded-3xl border border-white/70 bg-white/75 p-4 gap-3">
           <Text className="text-sm font-bold text-slate-800">
@@ -546,27 +714,6 @@ export default function AssignmentLessonScreen({
             }
           />
 
-          <Pressable
-            className="h-11 items-center justify-center rounded-2xl bg-violet-600"
-            disabled={
-              submitMutation.isPending ||
-              uploadAttachmentMutation.isPending ||
-              !canSubmit ||
-              canResubmit
-            }
-            onPress={() => {
-              void submitMutation.mutateAsync();
-            }}
-          >
-            <Text className="text-sm font-bold text-white">
-              {submitMutation.isPending
-                ? "Đang nộp..."
-                : canResubmit
-                  ? "Đã nộp - dùng Nộp lại"
-                  : "Nộp assignment"}
-            </Text>
-          </Pressable>
-
           {canResubmit ? (
             <Pressable
               className="h-11 items-center justify-center rounded-2xl bg-amber-500"
@@ -581,7 +728,23 @@ export default function AssignmentLessonScreen({
                   : "Nộp lại assignment"}
               </Text>
             </Pressable>
-          ) : null}
+          ) : (
+            <Pressable
+              className="h-11 items-center justify-center rounded-2xl bg-violet-600"
+              disabled={
+                submitMutation.isPending ||
+                uploadAttachmentMutation.isPending ||
+                !canSubmit
+              }
+              onPress={() => {
+                void submitMutation.mutateAsync();
+              }}
+            >
+              <Text className="text-sm font-bold text-white">
+                {submitMutation.isPending ? "Đang nộp..." : "Nộp assignment"}
+              </Text>
+            </Pressable>
+          )}
         </View>
 
         <View className="rounded-3xl border border-white/70 bg-white/75 p-4 gap-2">
@@ -589,8 +752,7 @@ export default function AssignmentLessonScreen({
             Submission hiện tại
           </Text>
           <Text className="text-xs font-semibold text-slate-600">
-            Thời gian nộp:{" "}
-            {String(submissionQuery.data?.data?.submissionTime ?? "--")}
+            Thời gian nộp: {formatDateTime(submissionQuery.data?.data?.submissionTime)}
           </Text>
           <Text className="text-xs font-semibold text-slate-600">
             Điểm: {String(submissionQuery.data?.data?.score ?? "--")}
@@ -631,7 +793,7 @@ export default function AssignmentLessonScreen({
                 className="rounded-2xl border border-slate-200 bg-white px-3 py-3 gap-1"
               >
                 <Text className="text-xs font-bold text-slate-800">
-                  {String(item.submissionTime ?? "")}
+                  {formatDateTime(item.submissionTime)}
                 </Text>
                 <Text className="text-[11px] font-semibold text-slate-600">
                   Điểm: {String(item.score ?? "--")}
@@ -653,46 +815,33 @@ export default function AssignmentLessonScreen({
       </ScrollView>
 
       {previousLesson && previousLessonRoute ? (
-        <View className="px-4 pb-4">
-          <View className="flex-row items-center justify-between">
-            <Pressable
-              className="h-11 flex-row items-center gap-1 rounded-full bg-slate-900 px-4"
-              onPress={handlePreviousLesson}
-            >
-              <Text className="text-xs font-bold text-white">←</Text>
-              <Text className="text-xs font-bold text-white">Bài trước</Text>
-            </Pressable>
-
-            {isLessonCompleted && nextLesson && nextLessonRoute ? (
-              <Pressable
-                className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
-                onPress={handleNextLesson}
-              >
-                <Text className="text-xs font-bold text-white">
-                  Bài tiếp theo
-                </Text>
-                <Text className="text-xs font-bold text-white">→</Text>
-              </Pressable>
-            ) : (
-              <View />
-            )}
-          </View>
-        </View>
-      ) : isLessonCompleted && nextLesson && nextLessonRoute ? (
-        <View className="px-4 pb-4">
-          <View className="flex-row items-center justify-end">
-            <Pressable
-              className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
-              onPress={handleNextLesson}
-            >
-              <Text className="text-xs font-bold text-white">
-                Bài tiếp theo
-              </Text>
-              <Text className="text-xs font-bold text-white">→</Text>
-            </Pressable>
-          </View>
-        </View>
+        <Pressable
+          className="absolute left-4 bottom-5 h-11 flex-row items-center gap-1 rounded-full bg-slate-900 px-4"
+          onPress={handlePreviousLesson}
+        >
+          <Text className="text-xs font-bold text-white">←</Text>
+          <Text className="text-xs font-bold text-white">Bài trước</Text>
+        </Pressable>
       ) : null}
+
+      {isLessonCompleted && nextLesson && nextLessonRoute ? (
+        <Pressable
+          className="absolute right-4 bottom-5 h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
+          onPress={handleNextLesson}
+        >
+          <Text className="text-xs font-bold text-white">Bài tiếp theo</Text>
+          <Text className="text-xs font-bold text-white">→</Text>
+        </Pressable>
+      ) : null}
+
+      <LessonDrawer
+        visible={isLessonDrawerOpen}
+        course={courseQuery.data}
+        currentLessonId={lessonId}
+        completedLessonIds={completedLessonIds}
+        onClose={() => setIsLessonDrawerOpen(false)}
+        onSelectLesson={handleSelectLessonFromDrawer}
+      />
     </SafeAreaView>
   );
 }

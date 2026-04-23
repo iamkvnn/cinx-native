@@ -26,6 +26,7 @@ export const fetchRecommendations = async (): Promise<
   const response = await CourseControllerService.getAllCourses({
     page: 1,
     size: 12,
+    status: "PUBLISHED",
   });
 
   const courses = response.data ?? [];

@@ -25,6 +25,11 @@ import { CourseControllerService, OpenAPI } from "../../api/course";
 import { RootStackParamList } from "../../navigation/AppNavigator";
 import { useAuthStore } from "../../store/useAuthStore";
 import LessonContentModal from "../../components/instructor/LessonContentModal";
+import {
+  getCourseLifecycleColor,
+  getCourseLifecycleLabel,
+  getCourseLifecycleStatus,
+} from "../../utils/courseStatus";
 
 type CurriculumBuilderRouteProp = RouteProp<RootStackParamList, "CurriculumBuilder">;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -82,6 +87,7 @@ export default function CurriculumBuilderScreen() {
   const [sections, setSections] = useState<SectionItem[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const courseStatus = getCourseLifecycleStatus(courseData?.data ?? {});
 
   // Section rename modal
   const [sectionModalVisible, setSectionModalVisible] = useState(false);
@@ -428,6 +434,34 @@ export default function CurriculumBuilderScreen() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container}>
+        <View
+          style={[
+            styles.statusBanner,
+            {
+              borderColor: `${getCourseLifecycleColor(courseData?.data ?? {})}33`,
+              backgroundColor: `${getCourseLifecycleColor(courseData?.data ?? {})}12`,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.statusBannerLabel,
+              { color: getCourseLifecycleColor(courseData?.data ?? {}) },
+            ]}
+          >
+            Trạng thái: {getCourseLifecycleLabel(courseData?.data ?? {})}
+          </Text>
+          <Text style={styles.statusBannerText}>
+            {courseStatus === "PUBLISHED"
+              ? "Khóa học đang công khai. Khi lưu thay đổi nội dung, hệ thống sẽ đẩy lại luồng duyệt."
+              : courseStatus === "WAITING_APPROVAL"
+                ? "Khóa học đang chờ duyệt, bạn vẫn có thể tiếp tục chỉnh sửa trước khi admin quyết định."
+                : courseStatus === "REJECTED"
+                  ? "Khóa học bị từ chối. Hãy sửa nội dung rồi gửi lại để duyệt."
+                  : "Đây là bản nháp, bạn có thể chỉnh sửa bình thường."}
+          </Text>
+        </View>
+
         {/* Top bar */}
         <View style={styles.topBar}>
           <View>
@@ -442,7 +476,13 @@ export default function CurriculumBuilderScreen() {
               {isSyncing ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.syncBtnText}>{isDirty ? "⬆ Lưu" : "Đã lưu ✓"}</Text>
+                <Text style={styles.syncBtnText}>
+                  {isDirty
+                    ? courseStatus === "PUBLISHED"
+                      ? "⬆ Lưu & gửi duyệt"
+                      : "⬆ Lưu"
+                    : "Đã lưu ✓"}
+                </Text>
               )}
             </Pressable>
             <Pressable style={styles.doneBtn} onPress={handleDone}>
@@ -583,6 +623,16 @@ export default function CurriculumBuilderScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8fafc" },
+  statusBanner: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  statusBannerLabel: { fontSize: 13, fontWeight: "800" },
+  statusBannerText: { marginTop: 4, fontSize: 12, lineHeight: 18, color: "#475569" },
 
   topBar: {
     flexDirection: "row",

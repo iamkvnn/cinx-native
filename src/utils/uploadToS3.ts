@@ -4,6 +4,7 @@ import {
 } from "../api/course";
 import { PresignedUrlControllerService as UserPresignedUrlService } from "../services/api/PresignedUrlControllerService";
 import { PresignedUrlControllerService as LearningPresignedUrlService } from "../services/api/PresignedUrlControllerService";
+import { AuthUploadControllerService } from "../services/api/AuthUploadControllerService";
 import { useAuthStore } from "../store/useAuthStore";
 
 export interface UploadResult {
@@ -133,6 +134,49 @@ export async function uploadLearningFileToS3(
   const { presignedUrl, fileKey } = presignedRes.data ?? {};
   if (!presignedUrl || !fileKey) {
     throw new Error("Failed to get presigned URL");
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", presignedUrl);
+    xhr.setRequestHeader("Content-Type", mimeType);
+    xhr.setRequestHeader("x-amz-acl", "public-read");
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(
+          new Error(
+            `S3 upload failed: HTTP ${xhr.status}\n${xhr.responseText}`,
+          ),
+        );
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network error during S3 upload"));
+    xhr.send({ uri: fileUri, type: mimeType, name: fileName } as any);
+  });
+
+  return {
+    fileKey,
+    fileName,
+    fileType: mimeType,
+    fileSize: 0,
+  };
+}
+
+export async function uploadAuthCvToS3(
+  fileUri: string,
+  fileName: string,
+  mimeType: string,
+): Promise<UploadResult> {
+  const presignedRes = await AuthUploadControllerService.getCvPresignedUrl({
+    fileName,
+    contentType: mimeType,
+  });
+
+  const { presignedUrl, fileKey } = presignedRes.data ?? {};
+  if (!presignedUrl || !fileKey) {
+    throw new Error("Failed to get presigned URL for CV upload");
   }
 
   await new Promise<void>((resolve, reject) => {

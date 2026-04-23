@@ -1,7 +1,15 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@react-navigation/native";
-import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactElement,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import RenderHtml from "react-native-render-html";
 import {
   ActivityIndicator,
@@ -16,6 +24,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { CourseDetailResponse } from "@/types";
+import LessonDrawer from "../../components/course/LessonDrawer";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { CourseControllerService } from "../../services/api/CourseControllerService";
@@ -26,6 +35,7 @@ import {
   findPreviousLesson,
   findNextLesson,
   getLessonRouteName,
+  type LessonRouteName,
 } from "../../utils/lessonFlow";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
@@ -72,6 +82,7 @@ export default function ArticleLessonScreen({
     itemProgressQuery.data?.data,
   );
   const [isLessonCompleted, setIsLessonCompleted] = useState(false);
+  const [isLessonDrawerOpen, setIsLessonDrawerOpen] = useState(false);
   const completedOnceRef = useRef(false);
 
   const nextLesson = useMemo(() => {
@@ -95,6 +106,19 @@ export default function ArticleLessonScreen({
       initialTab: "curriculum",
     });
   };
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          className="mr-1 h-9 w-9 items-center justify-center"
+          onPress={() => setIsLessonDrawerOpen((previous) => !previous)}
+        >
+          <Ionicons name="menu-outline" size={20} color="#334155" />
+        </Pressable>
+      ),
+    });
+  }, [navigation]);
 
   const completeLessonMutation = useMutation({
     mutationFn: async () => {
@@ -203,6 +227,50 @@ export default function ArticleLessonScreen({
         });
         break;
     }
+  };
+
+  const handleSelectLessonFromDrawer = (
+    routeName: LessonRouteName,
+    targetLessonId: string,
+    targetLessonTitle: string,
+  ): void => {
+    if (!targetLessonId || targetLessonId === lessonId) {
+      setIsLessonDrawerOpen(false);
+      return;
+    }
+
+    switch (routeName) {
+      case "VideoLesson":
+        navigation.replace("VideoLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+      case "ArticleLesson":
+        navigation.replace("ArticleLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+      case "QuizLesson":
+        navigation.replace("QuizLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+      case "AssignmentLesson":
+        navigation.replace("AssignmentLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+    }
+
+    setIsLessonDrawerOpen(false);
   };
 
   const handleScroll = (
@@ -360,46 +428,33 @@ export default function ArticleLessonScreen({
       </ScrollView>
 
       {previousLesson && previousLessonRoute ? (
-        <View className="px-4 pb-4">
-          <View className="flex-row items-center justify-between">
-            <Pressable
-              className="h-11 flex-row items-center gap-1 rounded-full bg-slate-900 px-4"
-              onPress={handlePreviousLesson}
-            >
-              <Text className="text-xs font-bold text-white">←</Text>
-              <Text className="text-xs font-bold text-white">Bài trước</Text>
-            </Pressable>
-
-            {isLessonCompleted && nextLesson && nextLessonRoute ? (
-              <Pressable
-                className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
-                onPress={handleNextLesson}
-              >
-                <Text className="text-xs font-bold text-white">
-                  Bài tiếp theo
-                </Text>
-                <Text className="text-xs font-bold text-white">→</Text>
-              </Pressable>
-            ) : (
-              <View />
-            )}
-          </View>
-        </View>
-      ) : isLessonCompleted && nextLesson && nextLessonRoute ? (
-        <View className="px-4 pb-4">
-          <View className="flex-row items-center justify-end">
-            <Pressable
-              className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
-              onPress={handleNextLesson}
-            >
-              <Text className="text-xs font-bold text-white">
-                Bài tiếp theo
-              </Text>
-              <Text className="text-xs font-bold text-white">→</Text>
-            </Pressable>
-          </View>
-        </View>
+        <Pressable
+          className="absolute left-4 bottom-5 h-11 flex-row items-center gap-1 rounded-full bg-slate-900 px-4"
+          onPress={handlePreviousLesson}
+        >
+          <Text className="text-xs font-bold text-white">←</Text>
+          <Text className="text-xs font-bold text-white">Bài trước</Text>
+        </Pressable>
       ) : null}
+
+      {isLessonCompleted && nextLesson && nextLessonRoute ? (
+        <Pressable
+          className="absolute right-4 bottom-5 h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
+          onPress={handleNextLesson}
+        >
+          <Text className="text-xs font-bold text-white">Bài tiếp theo</Text>
+          <Text className="text-xs font-bold text-white">→</Text>
+        </Pressable>
+      ) : null}
+
+      <LessonDrawer
+        visible={isLessonDrawerOpen}
+        course={courseQuery.data}
+        currentLessonId={lessonId}
+        completedLessonIds={completedLessonIds}
+        onClose={() => setIsLessonDrawerOpen(false)}
+        onSelectLesson={handleSelectLessonFromDrawer}
+      />
     </SafeAreaView>
   );
 }

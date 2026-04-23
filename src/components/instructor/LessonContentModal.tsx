@@ -12,6 +12,9 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -421,9 +424,59 @@ interface QuizQuestion {
   options: QuizOption[];
 }
 
+const parseQuizDateTime = (value?: string): Date | null => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+};
+
+const formatQuizDateTimeForApi = (value: Date | null): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
+  const hours = `${value.getHours()}`.padStart(2, "0");
+  const minutes = `${value.getMinutes()}`.padStart(2, "0");
+  const seconds = `${value.getSeconds()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+};
+
+const formatQuizDateTimeForDisplay = (value: Date | null): string => {
+  if (!value) {
+    return "Chọn ngày và giờ";
+  }
+
+  return value.toLocaleString("vi-VN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 function QuizForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => void }) {
   const [maxAttempt, setMaxAttempt] = useState("3");
   const [duration, setDuration] = useState("30");
+  const [startDateTime, setStartDateTime] = useState<Date | null>(null);
+  const [endDateTime, setEndDateTime] = useState<Date | null>(null);
+  const [pickerTarget, setPickerTarget] = useState<"start" | "end" | null>(
+    null,
+  );
+  const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
+  const [pickerWorkingDate, setPickerWorkingDate] = useState(new Date());
+  const [pickerVisible, setPickerVisible] = useState(false);
   const [questions, setQuestions] = useState<QuizQuestion[]>([
     { questionText: "", options: [{ optionText: "", isCorrect: false }, { optionText: "", isCorrect: false }] },
   ]);
@@ -439,6 +492,8 @@ function QuizForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => void
         if (data) {
           if (data.maxAttempt) setMaxAttempt(String(data.maxAttempt));
           if (data.duration) setDuration(String(data.duration));
+          setStartDateTime(parseQuizDateTime(data.startTime));
+          setEndDateTime(parseQuizDateTime(data.endTime));
           if (data.questions?.length) {
             setQuestions(
               data.questions.map((q: any) => ({
@@ -488,8 +543,61 @@ function QuizForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => void
     setQuestions(updated);
   };
 
+  const openDateTimePicker = (target: "start" | "end") => {
+    const initialValue =
+      target === "start" ? startDateTime ?? new Date() : endDateTime ?? new Date();
+
+    setPickerTarget(target);
+    setPickerMode("date");
+    setPickerWorkingDate(initialValue);
+    setPickerVisible(true);
+  };
+
+  const applyPickedDateTime = (value: Date) => {
+    if (pickerTarget === "start") {
+      setStartDateTime(value);
+      return;
+    }
+
+    if (pickerTarget === "end") {
+      setEndDateTime(value);
+    }
+  };
+
+  const handleDateTimeChange = (
+    event: DateTimePickerEvent,
+    selectedDate?: Date,
+  ) => {
+    if (event.type === "dismissed") {
+      setPickerVisible(false);
+      setPickerMode("date");
+      return;
+    }
+
+    if (!selectedDate) {
+      return;
+    }
+
+    if (pickerMode === "date") {
+      setPickerWorkingDate(selectedDate);
+      setPickerMode("time");
+      return;
+    }
+
+    const merged = new Date(pickerWorkingDate);
+    merged.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
+    applyPickedDateTime(merged);
+    setPickerVisible(false);
+    setPickerMode("date");
+  };
+
   const handleSave = async () => {
     try {
+      if (startDateTime && endDateTime && endDateTime <= startDateTime) {
+        Alert.alert("Lỗi", "Thời gian kết thúc phải sau thời gian bắt đầu.");
+        return;
+      }
+
       setIsSaving(true);
       ensureToken();
       const payload = {
@@ -497,6 +605,8 @@ function QuizForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => void
         requestBody: {
           maxAttempt: parseInt(maxAttempt) || 3,
           duration: parseInt(duration) || 30,
+          startTime: formatQuizDateTimeForApi(startDateTime),
+          endTime: formatQuizDateTimeForApi(endDateTime),
           isReviewAllowed: true,
           isShowAnswersOnReview: true,
           numberOfQuestionPerQuizSession: questions.length,
@@ -549,6 +659,59 @@ function QuizForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => void
           <TextInput style={formStyles.input} keyboardType="numeric" value={duration} onChangeText={setDuration} />
         </View>
       </View>
+
+      <Text style={[formStyles.label, { marginTop: 16 }]}>Start Time</Text>
+      <View style={formStyles.dateTimeRow}>
+        <Pressable
+          style={[formStyles.input, formStyles.dateTimeButton]}
+          onPress={() => openDateTimePicker("start")}
+        >
+          <Text style={formStyles.dateTimeText}>
+            {formatQuizDateTimeForDisplay(startDateTime)}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={formStyles.dateTimeClearButton}
+          onPress={() => setStartDateTime(null)}
+        >
+          <Ionicons name="close-circle" size={20} color="#64748b" />
+        </Pressable>
+      </View>
+
+      <Text style={[formStyles.label, { marginTop: 12 }]}>End Time</Text>
+      <View style={formStyles.dateTimeRow}>
+        <Pressable
+          style={[formStyles.input, formStyles.dateTimeButton]}
+          onPress={() => openDateTimePicker("end")}
+        >
+          <Text style={formStyles.dateTimeText}>
+            {formatQuizDateTimeForDisplay(endDateTime)}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={formStyles.dateTimeClearButton}
+          onPress={() => setEndDateTime(null)}
+        >
+          <Ionicons name="close-circle" size={20} color="#64748b" />
+        </Pressable>
+      </View>
+
+      {pickerVisible ? (
+        <View style={{ marginTop: 10 }}>
+          <DateTimePicker
+            value={pickerWorkingDate}
+            mode={pickerMode}
+            is24Hour
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={handleDateTimeChange}
+          />
+          <Text style={formStyles.pickerHint}>
+            {pickerMode === "date"
+              ? "Bước 1/2: Chọn ngày"
+              : "Bước 2/2: Chọn giờ"}
+          </Text>
+        </View>
+      ) : null}
 
       <Text style={[formStyles.label, { marginTop: 16 }]}>Questions</Text>
       {questions.map((q, qi) => (
@@ -681,6 +844,31 @@ const formStyles = StyleSheet.create({
     padding: 10,
     fontSize: 14,
     color: "#0f172a",
+  },
+  dateTimeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  dateTimeButton: {
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 44,
+  },
+  dateTimeText: {
+    fontSize: 14,
+    color: "#0f172a",
+  },
+  dateTimeClearButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pickerHint: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#64748b",
   },
   textArea: { height: 120, textAlignVertical: "top" },
   uploadBox: {

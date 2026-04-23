@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { type ReactElement } from "react";
-import { StyleSheet, Switch, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 interface OrderSummaryCardProps {
   orderCode: string;
@@ -10,12 +10,7 @@ interface OrderSummaryCardProps {
   coursePromotionDiscount: number;
   voucherCode?: string;
   voucherDiscountAmount: number;
-  rewardPoints: number;
-  useRewardPoints: boolean;
-  rewardPointsDiscount: number;
   finalPrice: number;
-  rewardPointsDisabled?: boolean;
-  onToggleUseRewardPoints: (value: boolean) => void;
 }
 
 const formatVnd = (amount: number): string => {
@@ -29,15 +24,8 @@ export default function OrderSummaryCard({
   coursePromotionDiscount,
   voucherCode,
   voucherDiscountAmount,
-  rewardPoints,
-  useRewardPoints,
-  rewardPointsDiscount,
   finalPrice,
-  rewardPointsDisabled = false,
-  onToggleUseRewardPoints,
 }: OrderSummaryCardProps): ReactElement {
-  const canUseRewardPoints = rewardPoints > 0 && !rewardPointsDisabled;
-
   return (
     <View
       className="overflow-hidden rounded-[24px] border border-white/70 bg-white/75 p-4"
@@ -59,9 +47,11 @@ export default function OrderSummaryCard({
       <View className="gap-2">
         <View className="flex-row items-center justify-between">
           <Text className="text-xs font-semibold text-slate-500">Mã đơn</Text>
-          <Text className="text-sm font-black tracking-wider text-slate-800">
-            {orderCode}
-          </Text>
+          <View className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1">
+            <Text className="text-xs font-bold tracking-wide text-slate-700">
+              {orderCode}
+            </Text>
+          </View>
         </View>
 
         <View className="flex-row items-center justify-between">
@@ -97,41 +87,11 @@ export default function OrderSummaryCard({
           </View>
         ) : null}
 
-        {canUseRewardPoints ? (
-          <View className="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2">
-            <View className="flex-row items-center justify-between">
-              <Text className="pr-2 text-xs font-semibold text-slate-600">
-                Dùng {rewardPoints.toLocaleString("vi-VN")} điểm thưởng (Giảm{" "}
-                {formatVnd(rewardPointsDiscount)})
-              </Text>
-              <Switch
-                value={useRewardPoints}
-                onValueChange={onToggleUseRewardPoints}
-                trackColor={{ false: "#cbd5e1", true: "#c4b5fd" }}
-                thumbColor={useRewardPoints ? "#7c3aed" : "#f8fafc"}
-              />
-            </View>
-          </View>
-        ) : null}
-
-        {rewardPointsDisabled ? (
-          <View className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-            <Text className="text-xs font-semibold text-amber-700">
-              Đã áp dụng voucher, tạm thời không thể dùng điểm thưởng.
-            </Text>
-          </View>
-        ) : null}
-
         <View className="flex-row items-center justify-between">
           <Text className="text-sm font-bold text-slate-700">
             Tổng thanh toán
           </Text>
           <View className="items-end">
-            {useRewardPoints ? (
-              <Text className="text-xs font-semibold text-slate-400 line-through">
-                {formatVnd(orderTotalPrice)}
-              </Text>
-            ) : null}
             <Text className="text-xl font-black text-violet-600">
               {formatVnd(finalPrice)}
             </Text>
