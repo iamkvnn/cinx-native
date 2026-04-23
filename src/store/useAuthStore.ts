@@ -71,6 +71,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  isHydrated: boolean;
   setUser: (user: AuthUser | null) => void;
   login: (email: string, password: string) => Promise<LoginResult>;
   hydrateAuth: () => Promise<void>;
@@ -84,6 +85,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
   isLoading: false,
+  isHydrated: false,
   error: null,
   setUser: (user) => set({ user }),
   clearError: () => set({ error: null }),
@@ -93,29 +95,21 @@ export const useAuthStore = create<AuthState>((set) => ({
       REFRESH_TOKEN_STORAGE_KEY,
     ]).then((pairs) => [pairs[0]?.[1] ?? null, pairs[1]?.[1] ?? null]);
 
-    if (!accessToken) {
-      set({
-        accessToken: null,
-        refreshToken: null,
-        user: null,
-        isAuthenticated: false,
-      });
-      return;
-    }
-
     let user: AuthUser | null = null;
-
-    try {
-      user = await fetchCurrentUser();
-    } catch {
-      user = null;
+    if (accessToken) {
+      try {
+        user = await fetchCurrentUser();
+      } catch {
+        user = null;
+      }
     }
 
     set({
       accessToken,
       refreshToken,
       user,
-      isAuthenticated: true,
+      isAuthenticated: !!user,
+      isHydrated: true,
     });
   },
   login: async (email, password) => {

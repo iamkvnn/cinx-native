@@ -108,6 +108,11 @@ const mapCourseItem = (item: ExploreCourseApi): ExploreCourseItem => {
     item.instructor?.name ??
     item.instructor?.profile?.fullName ??
     "Giảng viên";
+  const rawRating = item.rating;
+  const rating =
+    typeof rawRating === "number" && Number.isFinite(rawRating)
+      ? rawRating
+      : null;
 
   return {
     id: String(item.id),
@@ -116,7 +121,7 @@ const mapCourseItem = (item: ExploreCourseApi): ExploreCourseItem => {
     categoryId: String(resolvedCategory?.id ?? ""),
     categoryLabel: resolvedCategory?.name ?? "Tổng hợp",
     durationLabel: "10 giờ",
-    rating: 4.8,
+    rating,
     learnersLabel: formatLearners(
       item.enrollmentCount ?? item.enrollment_count,
     ),
@@ -138,7 +143,7 @@ const mapFeaturedCourse = (
     title: mapped?.title ?? "Chưa có khóa học nổi bật",
     description: mapped?.subtitle ?? "Dữ liệu sẽ được cập nhật sớm.",
     instructorName: mapped?.subtitle ?? "Đội ngũ Cinx",
-    rating: 4.8,
+    rating: mapped?.rating ?? null,
     learnersLabel: mapped?.learnersLabel ?? "0 học viên",
     priceLabel: mapped?.priceLabel ?? "Miễn phí",
     oldPriceLabel: mapped?.oldPriceLabel,
@@ -432,7 +437,10 @@ export default function ExploreScreen(): ReactElement {
                     <View className="flex-row items-center gap-1">
                       <Ionicons name="star" size={12} color="#f59e0b" />
                       <Text className="text-xs font-bold text-amber-500">
-                        {featuredCourse.rating}
+                        {typeof featuredCourse.rating === "number" &&
+                        Number.isFinite(featuredCourse.rating)
+                          ? featuredCourse.rating.toFixed(1)
+                          : "Chưa có"}
                       </Text>
                     </View>
                     <View className="flex-row items-center gap-1">

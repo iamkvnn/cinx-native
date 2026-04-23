@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,6 +10,7 @@ import {
   useRef,
   useState,
   type ReactElement,
+  useEffect,
 } from "react";
 import {
   ActivityIndicator,
@@ -23,6 +23,7 @@ import {
   Text,
   ToastAndroid,
   View,
+  TouchableOpacity,
 } from "react-native";
 import {
   SafeAreaView,
@@ -42,12 +43,6 @@ import {
   type CartApi,
   type CartItemApi,
 } from "../../services/api/cartApi";
-import { OrderControllerService } from "../../services/api/OrderControllerService";
-import {
-  checkoutOrder,
-  fetchMyOrders,
-  type OrderApi,
-} from "../../services/api/orderApi";
 import { resolvePricing } from "../../utils/pricing";
 
 const FALLBACK_IMAGE =
@@ -111,14 +106,6 @@ const getItemOriginalPrice = (item: CartItemApi): number | undefined => {
   return pricing.originalPrice * quantity;
 };
 
-const isPendingOrderStatus = (status: unknown): boolean => {
-  return (
-    String(status ?? "")
-      .trim()
-      .toLowerCase() === "pending"
-  );
-};
-
 const mapCartItem = (item: CartItemApi): CartItemCardData => {
   const course = item.course;
 
@@ -139,6 +126,7 @@ export default function CartScreen(): ReactElement {
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const swipeableRefs = useRef<Record<string, { close: () => void } | null>>(
     {},
   );
@@ -148,44 +136,9 @@ export default function CartScreen(): ReactElement {
     queryFn: fetchCart,
   });
 
-  const checkoutMutation = useMutation({
-    mutationFn: checkoutOrder,
-  });
-
   const removeItemMutation = useMutation({
     mutationFn: removeFromCart,
   });
-
-  const ordersQuery = useQuery({
-    queryKey: ["orders", "my-orders"],
-    queryFn: fetchMyOrders,
-    retry: false,
-  });
-
-  const cancelOrderMutation = useMutation({
-    mutationFn: async (orderId: string) =>
-      OrderControllerService.cancelOrder({ orderId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-      queryClient.invalidateQueries({ queryKey: ["cart"] });
-      showToast("Đã hủy đơn hàng chờ.");
-    },
-    onError: () => {
-      showToast("Không thể hủy đơn hàng.");
-    },
-  });
-
-  const handleCancelPendingOrder = (): void => {
-    if (!pendingOrder?.id) return;
-    Alert.alert("Xác nhận", "Bạn có chắc chắn muốn hủy đơn hàng chờ không?", [
-      { text: "Không", style: "cancel" },
-      {
-        text: "Hủy đơn",
-        style: "destructive",
-        onPress: () => cancelOrderMutation.mutate(String(pendingOrder.id)),
-      },
-    ]);
-  };
 
   const cartItems = useMemo<CartItemCardData[]>(() => {
     const payload: CartApi | undefined = cartQuery.data;
@@ -194,32 +147,50 @@ export default function CartScreen(): ReactElement {
     });
   }, [cartQuery.data]);
 
-  const totalPrice = useMemo<number>(() => {
-    return cartItems.reduce((sum, item) => sum + item.price, 0);
+  // Sync selectedIds with cartItems
+  useEffect(() => {
+    if (cartItems.length > 0 && selectedIds.size === 0) {
+        // Default select all on first load if nothing selected? 
+        // Better to just let user select.
+    }
   }, [cartItems]);
 
-  const pendingOrder = useMemo<OrderApi | undefined>(() => {
-    return (ordersQuery.data ?? []).find((order) =>
-      isPendingOrderStatus(order.status),
-    );
-  }, [ordersQuery.data]);
+  const selectedItems = useMemo(() => {
+    return cartItems.filter(item => selectedIds.has(item.cartItemId));
+  }, [cartItems, selectedIds]);
 
-  const pendingOrderTotal = useMemo<number>(() => {
-    const raw = Number(
-      pendingOrder?.totalAmount ?? pendingOrder?.total_amount ?? 0,
-    );
+  const totalPrice = useMemo<number>(() => {
+    return selectedItems.reduce((sum, item) => sum + item.price, 0);
+  }, [selectedItems]);
 
-    return Number.isFinite(raw) && raw > 0 ? raw : 0;
-  }, [pendingOrder?.totalAmount, pendingOrder?.total_amount]);
+  const allSelected = cartItems.length > 0 && selectedIds.size === cartItems.length;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(cartItems.map(i => i.cartItemId)));
+    }
+  };
+
+  const toggleSelection = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
 
   useFocusEffect(
     useCallback(() => {
-      void Promise.all([cartQuery.refetch(), ordersQuery.refetch()]);
+      void cartQuery.refetch();
 
       return () => {
         // no-op
       };
-    }, [cartQuery, ordersQuery]),
+    }, [cartQuery]),
   );
 
   const handleRemoveCartItem = async (
@@ -236,8 +207,14 @@ export default function CartScreen(): ReactElement {
         queryClient.invalidateQueries({ queryKey: ["cart"] }),
         queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
         queryClient.invalidateQueries({ queryKey: ["cart", "badge"] }),
-        queryClient.invalidateQueries({ queryKey: ["orders", "my-orders"] }),
       ]);
+      
+      // Also remove from selected if it was there
+      if (selectedIds.has(item.cartItemId)) {
+          const newSelected = new Set(selectedIds);
+          newSelected.delete(item.cartItemId);
+          setSelectedIds(newSelected);
+      }
     } catch (error) {
       showToast(getApiErrorMessage(error, "Không thể xóa khỏi giỏ hàng."));
     }
@@ -251,61 +228,16 @@ export default function CartScreen(): ReactElement {
     });
   };
 
-  const handleCheckout = async (): Promise<void> => {
-    if (checkoutMutation.isPending) {
+  const handleCheckout = (): void => {
+    if (selectedItems.length === 0) {
+      Alert.alert("Thông báo", "Vui lòng chọn ít nhất một khóa học để thanh toán.");
       return;
     }
 
-    const latestOrders = await ordersQuery.refetch();
-    const latestPendingOrder = (latestOrders.data ?? []).find((order) =>
-      isPendingOrderStatus(order.status),
-    );
-
-    if (latestPendingOrder?.id) {
-      navigation.navigate("Checkout", {
-        orderId: String(latestPendingOrder.id),
-      });
-      return;
-    }
-
-    if (cartItems.length === 0) {
-      return;
-    }
-
-    try {
-      const response = await checkoutMutation.mutateAsync(undefined);
-      const orderId = String(response?.id ?? "");
-
-      if (!orderId) {
-        showToast("Không lấy được thông tin đơn hàng.");
-        return;
-      }
-
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["orders", "my-orders"] }),
-        queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
-      ]);
-
-      await ordersQuery.refetch();
-
-      navigation.navigate("Checkout", { orderId });
-    } catch (error) {
-      const refreshedOrders = await ordersQuery.refetch();
-      const pendingFromRefetch = (refreshedOrders.data ?? []).find((order) =>
-        isPendingOrderStatus(order.status),
-      );
-
-      if (pendingFromRefetch?.id) {
-        navigation.navigate("Checkout", {
-          orderId: String(pendingFromRefetch.id),
-        });
-        return;
-      }
-
-      showToast(
-        getApiErrorMessage(error, "Thanh toán thất bại. Vui lòng thử lại."),
-      );
-    }
+    navigation.navigate("Checkout", { 
+        fromCart: true,
+        selectedCartItemIds: Array.from(selectedIds)
+    });
   };
 
   const handlePressCourse = (item: CartItemCardData): void => {
@@ -319,7 +251,7 @@ export default function CartScreen(): ReactElement {
   const onRefresh = async (): Promise<void> => {
     setRefreshing(true);
     try {
-      await Promise.all([cartQuery.refetch(), ordersQuery.refetch()]);
+      await cartQuery.refetch();
     } finally {
       setRefreshing(false);
     }
@@ -369,7 +301,7 @@ export default function CartScreen(): ReactElement {
     <SafeAreaView className="flex-1 bg-transparent" edges={["top", "bottom"]}>
       <AppScreenBackground />
 
-      <View className="px-4 pb-2 pt-2">
+      <View className="px-4 pb-2 pt-2 flex-row items-center justify-between">
         <View
           className="overflow-hidden rounded-2xl px-4 py-3"
           style={styles.glassPanel}
@@ -383,9 +315,21 @@ export default function CartScreen(): ReactElement {
             Giỏ hàng
           </Text>
         </View>
+
+        {cartItems.length > 0 && (
+            <TouchableOpacity 
+                onPress={toggleSelectAll}
+                className="flex-row items-center bg-white/40 px-3 py-2 rounded-xl border border-white/60"
+            >
+                <View className={`h-5 w-5 items-center justify-center rounded-full border-2 mr-2 ${allSelected ? 'border-violet-600 bg-violet-600' : 'border-slate-400'}`}>
+                    {allSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
+                </View>
+                <Text className="text-xs font-bold text-slate-700">Chọn tất cả</Text>
+            </TouchableOpacity>
+        )}
       </View>
 
-      {cartItems.length === 0 && !pendingOrder ? (
+      {cartItems.length === 0 ? (
         <EmptyCartState onExplore={handleExplore} />
       ) : (
         <>
@@ -403,50 +347,25 @@ export default function CartScreen(): ReactElement {
               />
             }
           >
-            {pendingOrder ? (
-              <View className="mb-4 rounded-[28px] border border-amber-200/80 bg-amber-50/80 p-5">
-                <Text className="text-base font-black text-amber-700">
-                  Bạn đang có đơn chờ thanh toán
-                </Text>
-                <Text className="mt-2 text-sm font-medium leading-6 text-amber-700/90">
-                  Bạn hiện có đơn hàng chưa thanh toán. Bạn có thể tiếp tục
-                  thanh toán hoặc hủy đơn để mua lại.
-                </Text>
-                <Pressable
-                  onPress={handleCancelPendingOrder}
-                  disabled={cancelOrderMutation.isPending}
-                  className={`mt-4 self-start rounded-xl px-4 py-2 ${cancelOrderMutation.isPending ? "bg-red-50" : "bg-red-100"}`}
-                >
-                  <Text
-                    className={`text-xs font-bold ${cancelOrderMutation.isPending ? "text-red-400" : "text-red-700"}`}
-                  >
-                    {cancelOrderMutation.isPending
-                      ? "Đang hủy..."
-                      : "Hủy đơn chờ"}
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null}
+            {cartItems.map((item) => (
+              <CartItemCard
+                key={item.cartItemId}
+                item={item}
+                selected={selectedIds.has(item.cartItemId)}
+                onToggleSelection={toggleSelection}
+                onPress={handlePressCourse}
+                onRemove={handleRemoveCartItem}
+                onSwipeableWillOpen={handleSwipeableWillOpen}
+                setSwipeableRef={(instance) => {
+                  if (instance) {
+                    swipeableRefs.current[item.cartItemId] = instance;
+                    return;
+                  }
 
-            {cartItems.length > 0
-              ? cartItems.map((item) => (
-                  <CartItemCard
-                    key={item.cartItemId}
-                    item={item}
-                    onPress={handlePressCourse}
-                    onRemove={handleRemoveCartItem}
-                    onSwipeableWillOpen={handleSwipeableWillOpen}
-                    setSwipeableRef={(instance) => {
-                      if (instance) {
-                        swipeableRefs.current[item.cartItemId] = instance;
-                        return;
-                      }
-
-                      delete swipeableRefs.current[item.cartItemId];
-                    }}
-                  />
-                ))
-              : null}
+                  delete swipeableRefs.current[item.cartItemId];
+                }}
+              />
+            ))}
 
             <View
               className="mt-2 overflow-hidden rounded-[28px] border border-white/75 bg-white/70 p-5"
@@ -463,40 +382,32 @@ export default function CartScreen(): ReactElement {
 
               <View className="flex-row items-center justify-between">
                 <Text className="text-sm font-medium text-slate-500">
-                  {pendingOrder && cartItems.length === 0
-                    ? `Đơn chờ #${pendingOrder.id ?? "-"}`
-                    : `Tạm tính (${cartItems.length} khóa học)`}
+                  Tạm tính ({selectedItems.length} khóa học đã chọn)
                 </Text>
                 <Text className="text-sm font-bold text-slate-800">
                   {new Intl.NumberFormat("vi-VN", {
                     style: "currency",
                     currency: "VND",
                     maximumFractionDigits: 0,
-                  }).format(
-                    pendingOrder && cartItems.length === 0
-                      ? pendingOrderTotal
-                      : totalPrice,
-                  )}
+                  }).format(totalPrice)}
                 </Text>
               </View>
             </View>
           </ScrollView>
 
           <CartSummaryBar
-            totalPrice={
-              pendingOrder && cartItems.length === 0
-                ? pendingOrderTotal
-                : totalPrice
-            }
+            totalPrice={totalPrice}
             onCheckout={() => {
               void handleCheckout();
             }}
-            onContinuePendingCheckout={(orderId) => {
-              navigation.navigate("Checkout", { orderId: String(orderId) });
+            onContinuePendingCheckout={() => {
+              navigation.navigate("Checkout", { 
+        fromCart: true,
+        selectedCartItemIds: Array.from(selectedIds)
+    });
             }}
-            isLoading={checkoutMutation.isPending}
-            pendingOrder={pendingOrder}
-            disabled={cartItems.length === 0 && !pendingOrder}
+            isLoading={false}
+            disabled={selectedItems.length === 0}
             bottomInset={insets.bottom + 8}
             bottomOffset={FLOATING_TAB_BAR_RESERVED_SPACE}
           />
@@ -511,7 +422,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.1)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.85)",
-    width: "34%",
+    alignSelf: 'flex-start',
   },
   glassCard: {
     shadowColor: "#1f2937",

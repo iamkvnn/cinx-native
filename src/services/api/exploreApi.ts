@@ -62,6 +62,9 @@ const sortCourses = (
   sortBy: FetchCoursesParams["sortBy"],
 ): ExploreCourseApi[] => {
   const source = [...courses];
+  const readRating = (value: unknown): number | null => {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  };
 
   switch (sortBy) {
     case "best_seller":
@@ -72,7 +75,24 @@ const sortCourses = (
       );
     case "top_rated":
       return source.sort(
-        (a, b) => Number(b.rating ?? 0) - Number(a.rating ?? 0),
+        (a, b) => {
+          const ratingA = readRating(a.rating);
+          const ratingB = readRating(b.rating);
+
+          if (ratingA === null && ratingB === null) {
+            return 0;
+          }
+
+          if (ratingA === null) {
+            return 1;
+          }
+
+          if (ratingB === null) {
+            return -1;
+          }
+
+          return ratingB - ratingA;
+        },
       );
     case "price_asc":
       return source.sort((a, b) => Number(a.price ?? 0) - Number(b.price ?? 0));
@@ -136,11 +156,15 @@ export const fetchFeaturedCourse =
 export const fetchCourses = async (
   params: FetchCoursesParams,
 ): Promise<ExploreCoursesPageApi> => {
+  // Backend expects a single sort key (e.g. "top_rated"), not "field,dir".
+  const sortParam = params.sortBy || undefined;
+
   const response = await CourseControllerService.getAllCourses({
     page: params.pageParam,
     size: 10,
     query: params.keyword || undefined,
     categoryId: params.categoryId || undefined,
+    sortBy: sortParam,
     status: "PUBLISHED",
   });
 
@@ -149,6 +173,7 @@ export const fetchCourses = async (
     priceType: params.priceType,
     isDiscounted: params.isDiscounted,
   });
+  // Fallback client-side sort in case backend ignores sort param.
   const sorted = sortCourses(filtered, params.sortBy);
 
   return {

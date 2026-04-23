@@ -475,7 +475,10 @@ export default function LandingPage(): ReactElement {
                   <View style={styles.ratingRow}>
                     <Ionicons name="star" size={12} color="#f59e0b" />
                     <Text style={styles.ratingText}>
-                      {Number(course.rating ?? 0).toFixed(1)}
+                      {typeof course.rating === "number" &&
+                      Number.isFinite(course.rating)
+                        ? course.rating.toFixed(1)
+                        : "Chưa có"}
                     </Text>
                     <Text style={styles.studentsText}>
                       ({formatStudents(course.enrollmentCount)})
@@ -770,6 +773,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingHorizontal: 6,
     paddingBottom: 4,
+    flex: 1,
+    justifyContent: 'space-between',
   },
   ratingRow: {
     flexDirection: "row",
@@ -791,9 +796,10 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 23,
     fontWeight: "800",
+    minHeight: 46, // 2 lines * 23 lineHeight
   },
   courseFooter: {
-    marginTop: 10,
+    marginTop: "auto",
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: "rgba(226,232,240,0.7)",

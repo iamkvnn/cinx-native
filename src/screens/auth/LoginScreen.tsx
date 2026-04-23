@@ -8,6 +8,8 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import {
   Animated,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -416,10 +418,15 @@ export default function LoginScreen({
     <SafeAreaView className="flex-1 bg-transparent">
       <AppScreenBackground />
 
-      <ScrollView
-        contentContainerClassName="flex-grow items-center justify-center px-4 py-8"
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
+        <ScrollView
+          contentContainerClassName="flex-grow items-center justify-center px-4 py-8"
+          keyboardShouldPersistTaps="handled"
+        >
         <View className="w-full max-w-[420px] overflow-hidden rounded-[40px] border border-white/70 bg-white/20 backdrop-blur-lg">
           <BlurView intensity={20} tint="extraLight" style={styles.blurFill} />
           <View className="bg-white/10 p-6 backdrop-blur-md">
@@ -899,7 +906,8 @@ export default function LoginScreen({
             </Text>
           </View>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

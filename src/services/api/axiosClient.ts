@@ -5,7 +5,7 @@ import env from "../../env";
 
 const axiosClient = axios.create({
   baseURL: env.apiUrl,
-  timeout: 1000,
+  timeout: 10000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -15,16 +15,16 @@ let failedQueue: any[] = [];
 let isRefreshing = false;
 
 function processQueue(error: any, token: string | null = null) {
-    failedQueue.forEach(prom => {
-      if (error) {
-        prom.reject(error);
-      } else {
-        prom.resolve(token);
-      }
-    });
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
 
-    failedQueue = [];
-  }
+  failedQueue = [];
+}
 
 axiosClient.interceptors.request.use(
   async (
@@ -37,7 +37,15 @@ axiosClient.interceptors.request.use(
     }
 
     if (__DEV__) {
-      console.log(`🚀 ${config.method?.toUpperCase()} ${config.url}`, config.data);
+      const isGet = config.method?.toLowerCase() === "get";
+      if (isGet) {
+        console.log(`🚀 GET ${config.url}`);
+      } else {
+        console.log(
+          `🚀 ${config.method?.toUpperCase()} ${config.url}`,
+          config.data ?? "",
+        );
+      }
     }
 
     return config;
@@ -47,64 +55,99 @@ axiosClient.interceptors.request.use(
 axiosClient.interceptors.response.use(
   (response) => {
     if (__DEV__) {
-      console.log(`🛬 ${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
+      console.log(
+        `🛬 ${response.config.method?.toUpperCase()} ${response.config.url}`,
+        response.data,
+      );
     }
     return response.data;
   },
   async (error) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
-        if (__DEV__) {
-          console.error('❌ API Error:', error.response?.data || error.message);
+    const originalRequest = error.config as InternalAxiosRequestConfig & {
+      _retry?: boolean;
+    };
+
+    if (__DEV__) {
+      const errorData = error.response?.data;
+      const apiMessage =
+        typeof errorData === "object" && errorData ? errorData.message : "";
+      const isPaymentNotFound =
+        typeof apiMessage === "string" &&
+        apiMessage.toLowerCase().includes("payment not found");
+
+      const isExpectedError = error.response?.status === 404 || isPaymentNotFound;
+
+      if (isExpectedError) {
+        console.warn(
+          "⚠️ API Warning (Expected):",
+          errorData || error.message,
+        );
+      } else {
+        console.error("❌ API Error:", errorData || error.message);
+      }
+    }
+
+    // Handle 401 - Unauthorized
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry
+    ) {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = "Bearer " + token;
+            return axiosClient(originalRequest);
+          })
+          .catch((err) => {
+            return Promise.reject(err);
+          });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+      const useAuthStore = (await import("../../store/useAuthStore"))
+        .useAuthStore;
+
+      try {
+        const refreshToken = await AsyncStorage.getItem(env.refreshToken);
+
+        if (!refreshToken) {
+          useAuthStore.getState().logout();
+          throw new Error("No refresh token available");
         }
-        // Handle 401 - Unauthorized
-        if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
-          if (isRefreshing) {
-             return new Promise((resolve, reject) => {
-                failedQueue.push({ resolve, reject });
-             }).then(token => {
-                originalRequest.headers.Authorization = 'Bearer ' + token;
-                return axiosClient(originalRequest);
-             }).catch(err => {
-                return Promise.reject(err);
-             });
-          }
 
-          originalRequest._retry = true;
-          isRefreshing = true;
-          const useAuthStore = (await import("../../store/useAuthStore")).useAuthStore;
+        // Call refresh endpoint manually to avoid circular dependency
+        const response = await axios.post(
+          `${env.apiUrl}/api/v1/auth/refresh-token`,
+          {
+            token: refreshToken,
+          },
+        );
 
-          try {
-            const refreshToken = await AsyncStorage.getItem(env.refreshToken);
+        const { accessToken, refreshToken: newRefreshToken } =
+          response.data.data;
 
-             if (!refreshToken) {
-                useAuthStore.getState().logout()
-                throw new Error('No refresh token available');
-             }
+        await AsyncStorage.setItem(env.accessToken, accessToken);
+        await AsyncStorage.setItem(env.refreshToken, newRefreshToken);
 
-             // Call refresh endpoint manually to avoid circular dependency
-             const response = await axios.post(`${env.apiUrl}/api/v1/auth/refresh-token`, { 
-                 token: refreshToken 
-             });
+        axiosClient.defaults.headers.common["Authorization"] =
+          "Bearer " + accessToken;
+        originalRequest.headers.Authorization = "Bearer " + accessToken;
 
-             const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+        processQueue(null, accessToken);
 
-              await AsyncStorage.setItem(env.accessToken, accessToken);
-              await AsyncStorage.setItem(env.refreshToken, newRefreshToken);
-             
-             axiosClient.defaults.headers.common['Authorization'] = 'Bearer ' + accessToken;
-             originalRequest.headers.Authorization = 'Bearer ' + accessToken;
-
-             processQueue(null, accessToken);
-             
-             return axiosClient(originalRequest);
-          } catch (err) {
-             processQueue(err, null);
-             useAuthStore.getState().logout();
-             return Promise.reject(err);
-          } finally {
-             isRefreshing = false;
-          }
-        }
+        return axiosClient(originalRequest);
+      } catch (err) {
+        processQueue(err, null);
+        useAuthStore.getState().logout();
+        return Promise.reject(err);
+      } finally {
+        isRefreshing = false;
+      }
+    }
 
     return Promise.reject(error);
   },

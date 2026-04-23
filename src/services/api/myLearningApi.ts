@@ -209,9 +209,40 @@ const mapCertificateToCompleted = (
 };
 
 export const fetchMyCertificates = async (): Promise<CompletedCourse[]> => {
-  const response = await CertificateControllerService.getMyCertificates();
+  const [certResponse, enrolledResponse] = await Promise.all([
+    CertificateControllerService.getMyCertificates(),
+    EnrollmentControllerService.getEnrolledCourses({
+      page: 1,
+      size: 100,
+    }),
+  ]);
 
-  return (response.data ?? []).map(mapCertificateToCompleted);
+  const certificatesData = certResponse.data;
+  const certificates = Array.isArray(certificatesData) ? certificatesData : [];
+
+  const enrolledData = enrolledResponse.data;
+  const enrolledCourses = Array.isArray(enrolledData) ? enrolledData : [];
+
+  const courseMap = new Map(
+    enrolledCourses.map((c) => [String(c.id), c]),
+  );
+
+  return certificates.map((cert) => {
+    const completed = mapCertificateToCompleted(cert);
+    const courseId = String(cert.courseId ?? "");
+
+    if (courseId && courseMap.has(courseId)) {
+      const course = courseMap.get(courseId);
+      completed.title = course?.title ?? completed.title;
+      completed.imageUrl =
+        course?.images?.[0]?.imageUrl ||
+        course?.thumbnailUrl ||
+        course?.thumbnail_url ||
+        "";
+    }
+
+    return completed;
+  });
 };
 
 export const toMonthlyGoalProgress = (

@@ -29,7 +29,7 @@ type CourseCardProps = {
   instructor?: string;
   subtitle?: string;
   description?: string;
-  rating?: number;
+  rating?: number | null;
   learnersLabel?: string;
   learners?: string;
   categoryLabel?: string;
@@ -66,35 +66,51 @@ export default function CourseCard({
     (typeof price === "number"
       ? `${price.toLocaleString("vi-VN")} đ`
       : "Miễn phí");
+  const displayRating =
+    typeof rating === "number" && Number.isFinite(rating)
+      ? rating.toFixed(1)
+      : "Chưa có";
 
   if (normalizedVariant === "default") {
     return (
       <TouchableOpacity
         onPress={onPress}
-        className="mb-4 overflow-hidden rounded-lg bg-white shadow-sm"
+        className="mb-4 overflow-hidden rounded-2xl bg-white shadow-sm border border-slate-100"
         activeOpacity={0.7}
       >
         <Image
           source={{ uri: imageUrl }}
-          className="h-40 w-full bg-gray-200"
+          className="h-44 w-full bg-gray-200"
           resizeMode="cover"
         />
-        <View className="p-4">
-          <Text
-            className="mb-2 text-base font-semibold text-slate-900"
-            numberOfLines={2}
-          >
-            {title}
-          </Text>
-          <View className="flex-row items-center justify-between">
-            <Text className="text-lg font-bold text-blue-600">
-              {displayPriceLabel}
+        <View className="p-4 flex-1 justify-between">
+          <View>
+            <Text
+              className="mb-2 text-[15px] font-bold text-slate-900"
+              numberOfLines={2}
+              style={{ minHeight: 42 }}
+            >
+              {title}
             </Text>
-            <TouchableOpacity className="rounded-full bg-blue-100 px-3 py-1">
-              <Text className="text-xs font-semibold text-blue-600">
+            <Text className="text-[11px] font-medium text-slate-500 mb-4" numberOfLines={1}>
+              {displayInstructor}
+            </Text>
+          </View>
+
+          <View className="flex-row items-center justify-between pt-3 border-t border-slate-50">
+            <View>
+               {oldPriceLabel && (
+                 <Text className="text-[10px] text-slate-400 line-through mb-0.5">{oldPriceLabel}</Text>
+               )}
+               <Text className="text-base font-black text-violet-600">
+                {displayPriceLabel}
+              </Text>
+            </View>
+            <View className="rounded-xl bg-violet-600 px-4 py-2">
+              <Text className="text-xs font-bold text-white">
                 {buttonLabel}
               </Text>
-            </TouchableOpacity>
+            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -134,7 +150,7 @@ export default function CourseCard({
       <View style={isCompact ? styles.bodyCompact : styles.bodyLarge}>
         <View style={styles.ratingRow}>
           <Ionicons name="star" size={12} color="#f59e0b" />
-          <Text style={styles.ratingText}>{rating ?? 0}</Text>
+          <Text style={styles.ratingText}>{displayRating}</Text>
           <View style={styles.learnersRow}>
             <Ionicons name="people" size={12} color="#94a3b8" />
             <Text style={styles.learnersText} numberOfLines={1}>

@@ -273,7 +273,11 @@ export const recreateOrderWithVoucher = async ({
 
 export const confirmPayment = async (
   orderId: string | number,
-  options?: { useRewardPoints?: boolean; paymentMethod?: "VN_PAY" | "MOMO" },
+  options?: { 
+    useRewardPoints?: boolean; 
+    paymentMethod?: "VN_PAY" | "MOMO";
+    skipCheckExisting?: boolean;
+  },
 ): Promise<ConfirmPaymentResult> => {
   const order = await getOrderById(orderId);
 
@@ -289,39 +293,41 @@ export const confirmPayment = async (
   const paymentMethod = options?.paymentMethod ?? order.paymentMethod ?? "MOMO";
   const orderIdString = String(orderId);
 
-  try {
-    const paymentResponse = await axiosClient.get("/api/v1/payments", {
-      params: {
-        orderId: orderIdString,
-        paymentMethod,
-      },
-    });
+  if (!options?.skipCheckExisting) {
+    try {
+      const paymentResponse = await axiosClient.get("/api/v1/payments", {
+        params: {
+          orderId: orderIdString,
+          paymentMethod,
+        },
+      });
 
-    const payment = paymentResponse?.data as PaymentResponse | undefined;
+      const payment = paymentResponse?.data as PaymentResponse | undefined;
 
-    if (String(payment?.status ?? "").toUpperCase() === "PAID") {
-      const paidOrder = await getOrderById(orderIdString);
-      return {
-        order: paidOrder,
-        isPaid: true,
-      };
-    }
-  } catch (error) {
-    if (!axios.isAxiosError(error)) {
-      throw error;
-    }
+      if (String(payment?.status ?? "").toUpperCase() === "PAID") {
+        const paidOrder = await getOrderById(orderIdString);
+        return {
+          order: paidOrder,
+          isPaid: true,
+        };
+      }
+    } catch (error) {
+      if (!axios.isAxiosError(error)) {
+        throw error;
+      }
 
-    const message = String(
-      (error.response?.data as { message?: string } | undefined)?.message ?? "",
-    ).toLowerCase();
-    const status = Number(error.response?.status ?? 0);
-    const isPaymentMissing =
-      status === 404 ||
-      message.includes("payment not found") ||
-      message.includes("not found for orderid");
+      const message = String(
+        (error.response?.data as { message?: string } | undefined)?.message ?? "",
+      ).toLowerCase();
+      const status = Number(error.response?.status ?? 0);
+      const isPaymentMissing =
+        status === 404 ||
+        message.includes("payment not found") ||
+        message.includes("not found for orderid");
 
-    if (!isPaymentMissing) {
-      throw error;
+      if (!isPaymentMissing) {
+        throw error;
+      }
     }
   }
 
