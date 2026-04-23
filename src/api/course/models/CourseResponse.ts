@@ -17,7 +17,6 @@ export type CourseResponse = {
     discountRate?: number;
     rating?: number;
     enrollmentCount?: number;
-    isPublished?: boolean;
     isInSubscription?: boolean;
     duration?: number;
     hasCertificate?: boolean;

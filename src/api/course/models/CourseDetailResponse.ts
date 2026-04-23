@@ -18,11 +18,11 @@ export type CourseDetailResponse = {
     discountRate?: number;
     rating?: number;
     enrollmentCount?: number;
-    isPublished?: boolean;
     isInSubscription?: boolean;
     duration?: number;
     hasCertificate?: boolean;
     certificateTitle?: string;
+    status?: 'DRAFT' | 'WAITING_APPROVAL' | 'PUBLISHED' | 'REJECTED' | 'ARCHIVED';
     createdAt?: string;
     updatedAt?: string;
     sections?: Array<SectionResponse>;
