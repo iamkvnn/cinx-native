@@ -125,6 +125,7 @@ export const fetchFeaturedCourse =
     const response = await CourseControllerService.getAllCourses({
       page: 1,
       size: 12,
+      status: "PUBLISHED",
     });
 
     const courses = (response.data ?? []).map(mapCourse);
@@ -140,6 +141,7 @@ export const fetchCourses = async (
     size: 10,
     query: params.keyword || undefined,
     categoryId: params.categoryId || undefined,
+    status: "PUBLISHED",
   });
 
   const mapped = (response.data ?? []).map(mapCourse);

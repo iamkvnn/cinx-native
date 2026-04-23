@@ -40,6 +40,7 @@ import CreateCourseScreen from "../screens/instructor/CreateCourseScreen";
 import CourseManagementScreen from "../screens/instructor/CourseManagementScreen";
 import CurriculumBuilderScreen from "../screens/instructor/CurriculumBuilderScreen";
 import CourseStudentsProgressScreen from "../screens/instructor/CourseStudentsProgressScreen";
+import AssignmentGradingScreen from "../screens/instructor/AssignmentGradingScreen";
 
 export type RootStackParamList = {
   Landing: undefined;
@@ -86,6 +87,7 @@ export type MainTabParamList = {
 export type InstructorTabParamList = {
   Dashboard: undefined;
   MyCourses: undefined;
+  AssignmentGrading: undefined;
   Profile: undefined;
 };
 
@@ -106,10 +108,11 @@ const TAB_ICON_MAP: Record<
 
 const INSTRUCTOR_TAB_ICON_MAP: Record<
   keyof InstructorTabParamList,
-  "stats-chart" | "library" | "person"
+  "stats-chart" | "library" | "create" | "person"
 > = {
   Dashboard: "stats-chart",
   MyCourses: "library",
+  AssignmentGrading: "create",
   Profile: "person",
 };
 
@@ -305,6 +308,13 @@ function InstructorTabs(): ReactElement {
         }}
       />
       <InstructorTab.Screen
+        name="AssignmentGrading"
+        component={AssignmentGradingScreen}
+        options={{
+          title: "Chấm bài",
+        }}
+      />
+      <InstructorTab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
@@ -322,8 +332,11 @@ export default function AppNavigator(): ReactElement {
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
         <RootStack.Group screenOptions={{ headerShown: false }}>
-          {user.role === 'INSTRUCTOR' ? (
-            <RootStack.Screen name="InstructorTabs" component={InstructorTabs} />
+          {user.role === "INSTRUCTOR" ? (
+            <RootStack.Screen
+              name="InstructorTabs"
+              component={InstructorTabs}
+            />
           ) : (
             <RootStack.Screen name="MainTabs" component={MainTabs} />
           )}
@@ -372,6 +385,8 @@ export default function AppNavigator(): ReactElement {
               title: "Thanh Toán",
               headerShown: true,
               headerTintColor: "#2563eb",
+              headerBackTitle: "",
+              headerBackButtonDisplayMode: "minimal",
             }}
           />
           <RootStack.Screen
@@ -412,8 +427,8 @@ export default function AppNavigator(): ReactElement {
 
       <RootStack.Group screenOptions={{ headerShown: false }}>
         <RootStack.Screen name="CourseDetail" component={CourseDetailScreen} />
-        <RootStack.Screen 
-          name="CourseStudentsProgress" 
+        <RootStack.Screen
+          name="CourseStudentsProgress"
           component={CourseStudentsProgressScreen}
           options={{
             headerShown: true,

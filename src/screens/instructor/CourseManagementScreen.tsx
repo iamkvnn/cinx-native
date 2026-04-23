@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Switch,
 } from "react-native";
 import Slider from "@react-native-community/slider";
 import { useRoute, useNavigation, RouteProp } from "@react-navigation/native";
@@ -23,6 +24,11 @@ import { RootStackParamList } from "../../navigation/AppNavigator";
 import { useAuthStore } from "../../store/useAuthStore";
 import { CourseControllerService } from "@/services/api/CourseControllerService";
 import { CourseImageControllerService } from "@/services/api/CourseImageControllerService";
+import {
+  getCourseLifecycleColor,
+  getCourseLifecycleLabel,
+  getCourseLifecycleStatus,
+} from "../../utils/courseStatus";
 
 type CourseManagementRouteProp = RouteProp<RootStackParamList, "CourseManagement">;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -46,8 +52,11 @@ export default function CourseManagementScreen() {
   const [duration, setDuration] = useState(90);
   const [certificateTitle, setCertificateTitle] = useState("");
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const [isPublished, setIsPublished] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUploadingImg, setIsUploadingImg] = useState(false);
+
+  const courseStatus = getCourseLifecycleStatus(courseData?.data ?? {});
 
   useEffect(() => {
     if (courseData?.data) {
@@ -57,6 +66,7 @@ export default function CourseManagementScreen() {
       setPrice(d.price?.toString() || "");
       setDuration(Math.min(Math.max(Number(d.duration) || 90, 90), 240));
       setCertificateTitle((d as any).certificateTitle || "");
+      setIsPublished(courseStatus === "PUBLISHED" || courseStatus === "WAITING_APPROVAL");
       const imgs = (d as any).images;
       if (imgs && imgs.length > 0) {
         setThumbUrl(imgs[0].imageUrl ?? imgs[0].url ?? null);
@@ -98,8 +108,7 @@ export default function CourseManagementScreen() {
           duration,
           hasCertificate: certificateTitle.trim().length > 0,
           certificateTitle: certificateTitle.trim() || title,
-          // Preserve existing publish state — do NOT reset to false
-          isPublished: (d as any)?.isPublished ?? false,
+          isPublished,
           isInSubscription: (d as any)?.isInSubscription ?? false,
           sections: payloadSections,
         },
@@ -191,6 +200,35 @@ export default function CourseManagementScreen() {
       {/* Basic Info */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Thông tin cơ bản</Text>
+        <View style={[styles.statusBanner, { borderColor: `${getCourseLifecycleColor(courseData?.data ?? {})}33`, backgroundColor: `${getCourseLifecycleColor(courseData?.data ?? {})}12` }]}>
+          <Text style={[styles.statusBannerLabel, { color: getCourseLifecycleColor(courseData?.data ?? {}) }]}>
+            Trạng thái: {getCourseLifecycleLabel(courseData?.data ?? {})}
+          </Text>
+          <Text style={styles.statusBannerText}>
+            {courseStatus === "PUBLISHED"
+              ? "Khóa học đang công khai. Khi lưu thay đổi nội dung, hệ thống sẽ chuyển sang luồng duyệt lại."
+              : courseStatus === "WAITING_APPROVAL"
+                ? "Khóa học đang chờ admin duyệt. Bạn vẫn có thể chỉnh sửa nội dung trước khi được duyệt."
+                : courseStatus === "REJECTED"
+                  ? "Khóa học bị từ chối. Hãy chỉnh sửa nội dung rồi gửi duyệt lại."
+                  : "Khóa học đang ở bản nháp. Bạn có thể chỉnh sửa bình thường."}
+          </Text>
+        </View>
+
+        <View style={styles.publishToggleRow}>
+          <View style={styles.publishToggleTextWrap}>
+            <Text style={styles.publishToggleTitle}>Đưa khóa học lên duyệt</Text>
+            <Text style={styles.publishToggleDesc}>
+              Bật để gửi khóa học lên luồng xét duyệt. Tắt sẽ đưa khóa học về bản nháp.
+            </Text>
+          </View>
+          <Switch
+            value={isPublished}
+            onValueChange={setIsPublished}
+            trackColor={{ false: "#cbd5e1", true: "#c4b5fd" }}
+            thumbColor={isPublished ? "#7c3aed" : "#f8fafc"}
+          />
+        </View>
 
         <Text style={styles.label}>Ảnh bìa khoá học</Text>
         <Pressable
@@ -266,7 +304,9 @@ export default function CourseManagementScreen() {
           {isUpdating ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.submitButtonText}>Lưu thay đổi</Text>
+            <Text style={styles.submitButtonText}>
+              {courseStatus === "PUBLISHED" ? "Lưu thay đổi & gửi duyệt" : "Lưu thay đổi"}
+            </Text>
           )}
         </Pressable>
       </View>
@@ -348,4 +388,29 @@ const styles = StyleSheet.create({
     borderColor: "#7958ee",
   },
   outlineButtonText: { color: "#7958ee", fontSize: 15, fontWeight: "bold" },
+  statusBanner: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  statusBannerLabel: { fontSize: 13, fontWeight: "800" },
+  statusBannerText: { marginTop: 4, fontSize: 12, lineHeight: 18, color: "#475569" },
+  publishToggleRow: {
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+  publishToggleTextWrap: { flex: 1 },
+  publishToggleTitle: { fontSize: 14, fontWeight: "800", color: "#0f172a" },
+  publishToggleDesc: { marginTop: 4, fontSize: 12, lineHeight: 18, color: "#64748b" },
 });

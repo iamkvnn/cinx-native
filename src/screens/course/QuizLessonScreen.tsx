@@ -1,8 +1,16 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
-import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -21,6 +29,7 @@ import type {
   QuizSessionQuestionResponse,
   QuizSessionResponse,
 } from "@/types";
+import LessonDrawer from "../../components/course/LessonDrawer";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { CourseControllerService } from "../../services/api/CourseControllerService";
@@ -33,6 +42,7 @@ import {
   findPreviousLesson,
   findNextLesson,
   getLessonRouteName,
+  type LessonRouteName,
 } from "../../utils/lessonFlow";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
@@ -99,6 +109,9 @@ export default function QuizLessonScreen({
     useState<QuizSessionResponse | null>(null);
   const [timerStarted, setTimerStarted] = useState(false);
   const [isLessonCompleted, setIsLessonCompleted] = useState(false);
+  const [isLessonDrawerOpen, setIsLessonDrawerOpen] = useState(false);
+  const [quizAvailabilityMessage, setQuizAvailabilityMessage] =
+    useState<string>("");
   const autoSubmittedRef = useRef(false);
 
   const completedLessonIds = useMemo(() => {
@@ -127,6 +140,19 @@ export default function QuizLessonScreen({
     });
   };
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          className="mr-1 h-9 w-9 items-center justify-center"
+          onPress={() => setIsLessonDrawerOpen((previous) => !previous)}
+        >
+          <Ionicons name="menu-outline" size={20} color="#334155" />
+        </Pressable>
+      ),
+    });
+  }, [navigation]);
+
   const getApiErrorMessage = (error: unknown, fallback: string): string => {
     if (axios.isAxiosError(error)) {
       const data = error.response?.data as
@@ -153,8 +179,40 @@ export default function QuizLessonScreen({
     );
   };
 
+  const checkQuizTimeWindowAvailability = (): boolean => {
+    const quizData = quizQuery.data?.data;
+    if (!quizData) return true;
+
+    const startTime = quizData.startTime ? new Date(quizData.startTime) : null;
+    const endTime = quizData.endTime ? new Date(quizData.endTime) : null;
+    const now = new Date();
+
+    if (startTime && now < startTime) {
+      setQuizAvailabilityMessage(
+        "Bài quiz chưa mở. Vui lòng chờ đến thời gian cho phép.",
+      );
+      return false;
+    }
+
+    if (endTime && now > endTime) {
+      setQuizAvailabilityMessage(
+        "Bài quiz đã hết hạn. Bạn không thể làm bài này nữa.",
+      );
+      return false;
+    }
+
+    setQuizAvailabilityMessage("");
+    return true;
+  };
+
   const createSessionMutation = useMutation({
     mutationFn: async () => {
+      // Check time window availability first
+      const isAvailable = checkQuizTimeWindowAvailability();
+      if (!isAvailable) {
+        throw new Error(quizAvailabilityMessage);
+      }
+
       const existingSessions = (quizSessionsQuery.data?.data ??
         []) as QuizSessionResponse[];
       const inProgressSession = existingSessions.find(
@@ -335,6 +393,15 @@ export default function QuizLessonScreen({
     setTimerStarted(true);
   }, [quizSessionId, submissionResult, totalDurationSeconds]);
 
+  // Check time window availability when quiz data loads
+  useEffect(() => {
+    if (!quizQuery.data?.data) {
+      return;
+    }
+
+    checkQuizTimeWindowAvailability();
+  }, [quizQuery.data?.data]);
+
   useEffect(() => {
     if (
       !quizSessionId ||
@@ -474,6 +541,50 @@ export default function QuizLessonScreen({
     }
   };
 
+  const handleSelectLessonFromDrawer = (
+    routeName: LessonRouteName,
+    targetLessonId: string,
+    targetLessonTitle: string,
+  ): void => {
+    if (!targetLessonId || targetLessonId === lessonId) {
+      setIsLessonDrawerOpen(false);
+      return;
+    }
+
+    switch (routeName) {
+      case "VideoLesson":
+        navigation.replace("VideoLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+      case "ArticleLesson":
+        navigation.replace("ArticleLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+      case "QuizLesson":
+        navigation.replace("QuizLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+      case "AssignmentLesson":
+        navigation.replace("AssignmentLesson", {
+          lessonId: targetLessonId,
+          courseId,
+          lessonTitle: targetLessonTitle,
+        });
+        break;
+    }
+
+    setIsLessonDrawerOpen(false);
+  };
+
   const handleSelectAnswer = async (
     questionId: string,
     userAnswer: string,
@@ -503,13 +614,19 @@ export default function QuizLessonScreen({
       const totalCorrect = Number(
         result.data?.quizSessionSubmission?.totalCorrectAnswers ?? 0,
       );
+      const totalQuestions = sessionQuestions.length;
 
       Alert.alert(
         fromTimeout ? "Hết giờ" : "Đã nộp bài",
-        `Điểm: ${score} | Câu đúng: ${totalCorrect}`,
+        `Điểm: ${score} | Câu đúng: ${totalCorrect}/${totalQuestions}`,
       );
 
-      if (!completedLessonIds.includes(lessonId)) {
+      // Only mark as complete if all answers are correct
+      if (
+        !completedLessonIds.includes(lessonId) &&
+        totalCorrect === totalQuestions &&
+        totalQuestions > 0
+      ) {
         setIsLessonCompleted(true);
         void completeLessonMutation.mutateAsync();
       }
@@ -557,19 +674,33 @@ export default function QuizLessonScreen({
         </View>
 
         {!quizSessionId ? (
-          <Pressable
-            className="h-11 items-center justify-center rounded-2xl bg-violet-600"
-            disabled={createSessionMutation.isPending}
-            onPress={() => {
-              void createSessionMutation.mutateAsync();
-            }}
-          >
-            <Text className="text-sm font-bold text-white">
-              {createSessionMutation.isPending
-                ? "Đang tạo session..."
-                : "Bắt đầu quiz"}
-            </Text>
-          </Pressable>
+          <>
+            <Pressable
+              className={`h-11 items-center justify-center rounded-2xl ${
+                quizAvailabilityMessage ? "bg-slate-300" : "bg-violet-600"
+              }`}
+              disabled={
+                createSessionMutation.isPending ||
+                Boolean(quizAvailabilityMessage)
+              }
+              onPress={() => {
+                void createSessionMutation.mutateAsync();
+              }}
+            >
+              <Text className="text-sm font-bold text-white">
+                {createSessionMutation.isPending
+                  ? "Đang tạo session..."
+                  : "Bắt đầu quiz"}
+              </Text>
+            </Pressable>
+            {quizAvailabilityMessage && (
+              <View className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2">
+                <Text className="text-xs font-semibold text-red-700">
+                  {quizAvailabilityMessage}
+                </Text>
+              </View>
+            )}
+          </>
         ) : (
           <View className="rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2">
             <Text className="mt-1 text-sm font-black text-violet-900">
@@ -722,46 +853,33 @@ export default function QuizLessonScreen({
       </ScrollView>
 
       {previousLesson && previousLessonRoute ? (
-        <View className="px-4 pb-4">
-          <View className="flex-row items-center justify-between">
-            <Pressable
-              className="h-11 flex-row items-center gap-1 rounded-full bg-slate-900 px-4"
-              onPress={handlePreviousLesson}
-            >
-              <Text className="text-xs font-bold text-white">←</Text>
-              <Text className="text-xs font-bold text-white">Bài trước</Text>
-            </Pressable>
-
-            {isLessonCompleted && nextLesson && nextLessonRoute ? (
-              <Pressable
-                className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
-                onPress={handleNextLesson}
-              >
-                <Text className="text-xs font-bold text-white">
-                  Bài tiếp theo
-                </Text>
-                <Text className="text-xs font-bold text-white">→</Text>
-              </Pressable>
-            ) : (
-              <View />
-            )}
-          </View>
-        </View>
-      ) : isLessonCompleted && nextLesson && nextLessonRoute ? (
-        <View className="px-4 pb-4">
-          <View className="flex-row items-center justify-end">
-            <Pressable
-              className="h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
-              onPress={handleNextLesson}
-            >
-              <Text className="text-xs font-bold text-white">
-                Bài tiếp theo
-              </Text>
-              <Text className="text-xs font-bold text-white">→</Text>
-            </Pressable>
-          </View>
-        </View>
+        <Pressable
+          className="absolute left-4 bottom-5 h-11 flex-row items-center gap-1 rounded-full bg-slate-900 px-4"
+          onPress={handlePreviousLesson}
+        >
+          <Text className="text-xs font-bold text-white">←</Text>
+          <Text className="text-xs font-bold text-white">Bài trước</Text>
+        </Pressable>
       ) : null}
+
+      {isLessonCompleted && nextLesson && nextLessonRoute ? (
+        <Pressable
+          className="absolute right-4 bottom-5 h-11 flex-row items-center gap-1 rounded-full bg-violet-600 px-4"
+          onPress={handleNextLesson}
+        >
+          <Text className="text-xs font-bold text-white">Bài tiếp theo</Text>
+          <Text className="text-xs font-bold text-white">→</Text>
+        </Pressable>
+      ) : null}
+
+      <LessonDrawer
+        visible={isLessonDrawerOpen}
+        course={courseQuery.data}
+        currentLessonId={lessonId}
+        completedLessonIds={completedLessonIds}
+        onClose={() => setIsLessonDrawerOpen(false)}
+        onSelectLesson={handleSelectLessonFromDrawer}
+      />
     </SafeAreaView>
   );
 }

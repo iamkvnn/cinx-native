@@ -332,6 +332,7 @@ export default function LandingPage(): ReactElement {
         const bestSellersResponse = await courseController.getAllCourses({
           page: 1,
           size: 5,
+          status: "PUBLISHED",
         });
 
         if (!active) {
@@ -438,10 +439,6 @@ export default function LandingPage(): ReactElement {
             <Text style={styles.sectionTitle}>Khóa học phổ biến</Text>
             <Text style={styles.sectionCaption}>Xu hướng học tập mới nhất</Text>
           </View>
-          <Pressable style={styles.sectionAction}>
-            <Text style={styles.sectionActionText}>Xem tất cả</Text>
-            <Ionicons name="chevron-forward" size={14} color="#7c3aed" />
-          </Pressable>
         </View>
 
         <ScrollView

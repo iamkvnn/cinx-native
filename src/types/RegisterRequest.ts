@@ -3,10 +3,10 @@
 /* tslint:disable */
 /* eslint-disable */
 export type RegisterRequest = {
-    name: string;
-    email: string;
-    password: string;
-    role?: 'USER' | 'INSTRUCTOR' | 'ADMIN';
-    gender?: 'MALE' | 'FEMALE';
+  name: string;
+  email: string;
+  password: string;
+  role?: "USER" | "INSTRUCTOR" | "ADMIN";
+  gender?: "MALE" | "FEMALE";
+  cvFileKey?: string;
 };
-

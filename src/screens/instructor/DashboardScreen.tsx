@@ -21,6 +21,7 @@ import { RootStackParamList } from "../../navigation/AppNavigator";
 import { CourseControllerService } from "@/services/api/CourseControllerService";
 import { LearningProgressControllerService } from "@/services/api/LearningProgressControllerService";
 import { ReviewControllerService } from "@/services/api/ReviewControllerService";
+import { isCoursePublished } from "../../utils/courseStatus";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -48,7 +49,7 @@ export default function DashboardScreen() {
   });
 
   const courses = coursesData?.data || [];
-  const publishedCourses = courses.filter((c) => c.isPublished);
+  const publishedCourses = courses.filter((c) => isCoursePublished(c));
 
   // 2. Fetch progress & reviews for published courses
   const {
