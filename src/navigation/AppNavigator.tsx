@@ -29,7 +29,6 @@ import CheckoutScreen from "../screens/ecommerce/CheckoutScreen";
 import LandingPage from "../screens/landing/LandingPage";
 import { fetchCart } from "../services/api/cartApi";
 import { NotificationControllerService } from "../services/api/NotificationControllerService";
-import { registerPushTokenIfNeeded } from "../services/notifications/pushNotifications";
 import {
   MyCertificatesScreen,
   VouchersScreen,
@@ -318,14 +317,6 @@ function InstructorTabs(): ReactElement {
 
 export default function AppNavigator(): ReactElement {
   const user = useAuthStore((state) => state.user);
-
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-
-    void registerPushTokenIfNeeded();
-  }, [user]);
 
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>

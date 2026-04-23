@@ -21,10 +21,10 @@ import DraggableFlatList, { RenderItemParams, ScaleDecorator } from "react-nativ
 import { Ionicons } from "@expo/vector-icons";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-import { CourseControllerService, OpenAPI } from "../../api/course";
 import { RootStackParamList } from "../../navigation/AppNavigator";
 import { useAuthStore } from "../../store/useAuthStore";
 import LessonContentModal from "../../components/instructor/LessonContentModal";
+import { CourseControllerService } from "@/services/api/CourseControllerService";
 
 type CurriculumBuilderRouteProp = RouteProp<RootStackParamList, "CurriculumBuilder">;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -61,11 +61,6 @@ const LESSON_TYPE_COLORS: Record<LessonType, string> = {
   QUIZ: "#10b981",
 };
 
-function ensureToken() {
-  const token = useAuthStore.getState().accessToken;
-  if (token) OpenAPI.TOKEN = token;
-}
-
 export default function CurriculumBuilderScreen() {
   const route = useRoute<CurriculumBuilderRouteProp>();
   const navigation = useNavigation<NavigationProp>();
@@ -74,7 +69,6 @@ export default function CurriculumBuilderScreen() {
   const { data: courseData, isLoading, refetch } = useQuery({
     queryKey: ["course-curriculum", courseId],
     queryFn: () => {
-      ensureToken();
       return CourseControllerService.getCourseById({ id: courseId });
     },
   });
@@ -124,7 +118,6 @@ export default function CurriculumBuilderScreen() {
   const handleSyncStructure = async () => {
     try {
       setIsSyncing(true);
-      ensureToken();
 
       const payloadSections = sections.map((sec, secIndex) => ({
         id: sec.id?.startsWith("temp-") ? undefined : sec.id,

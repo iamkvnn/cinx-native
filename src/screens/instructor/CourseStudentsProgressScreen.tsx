@@ -13,10 +13,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 
 import { RootStackParamList } from "../../navigation/AppNavigator";
-import { LearningProgressControllerService } from "../../api/learning";
-import { UserControllerService } from "../../api/user";
-import { useAuthStore } from "../../store/useAuthStore";
-import { OpenAPI } from "../../api/learning/core/OpenAPI";
+import { LearningProgressControllerService } from "@/services/api/LearningProgressControllerService";
+import { UserControllerService } from "@/services/api/UserControllerService";
 
 type RouteProps = RouteProp<RootStackParamList, "CourseStudentsProgress">;
 
@@ -30,11 +28,9 @@ export default function CourseStudentsProgressScreen() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["course-students-progress", courseId],
     queryFn: async () => {
-      const token = useAuthStore.getState().accessToken;
-      if (token) OpenAPI.TOKEN = token;
 
       // 1. Fetch progress
-      const progressRes = await LearningProgressControllerService.getCourseProgress({
+      const progressRes = await LearningProgressControllerService.getCourseProgressByCourseId({
         courseId,
       });
       const progressList = progressRes.data || [];
@@ -51,8 +47,6 @@ export default function CourseStudentsProgressScreen() {
       let usersMap: Record<string, any> = {};
       try {
         if (uniqueIds.length > 0) {
-          const { OpenAPI: UserOpenAPI } = await import("../../api/user/core/OpenAPI");
-          if (token) UserOpenAPI.TOKEN = token;
           const usersRes = await UserControllerService.getUsersByIds({ ids: uniqueIds });
           const users = usersRes.data || [];
           users.forEach((u) => {

@@ -51,4 +51,22 @@ export class LearningProgressControllerService {
     }): Promise<ApiResponseListLearningItemProgressResponse> {
         return axiosClient.get(`/api/v1/learning/course-progress/${courseId}/items`);
     }
+
+    public static getLearningItemProgressByCourseIdAndUserId({
+        courseId,
+        userId,
+    }: {
+        courseId: string,
+        userId: string,
+    }): Promise<ApiResponseListLearningItemProgressResponse> {
+        return axiosClient.get(`/api/v1/learning/course-progress/courses/${courseId}/students/${userId}/progress`);
+    }
+
+    public static getCourseProgressByCourseId({
+        courseId,
+    }: {
+        courseId: string,
+    }): Promise<ApiResponseListCourseProgressResponse> {
+        return axiosClient.get(`/api/v1/learning/course-progress/courses/${courseId}/progress`);
+    }
 }

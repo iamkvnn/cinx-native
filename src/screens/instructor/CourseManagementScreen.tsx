@@ -18,19 +18,15 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 
-import { CourseControllerService, OpenAPI } from "../../api/course";
-import { CourseImageControllerService } from "../../api/course/services/CourseImageControllerService";
 import { uploadFileToS3 } from "../../utils/uploadToS3";
 import { RootStackParamList } from "../../navigation/AppNavigator";
 import { useAuthStore } from "../../store/useAuthStore";
+import { CourseControllerService } from "@/services/api/CourseControllerService";
+import { CourseImageControllerService } from "@/services/api/CourseImageControllerService";
 
 type CourseManagementRouteProp = RouteProp<RootStackParamList, "CourseManagement">;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-function ensureToken() {
-  const token = useAuthStore.getState().accessToken;
-  if (token) OpenAPI.TOKEN = token;
-}
 
 export default function CourseManagementScreen() {
   const route = useRoute<CourseManagementRouteProp>();
@@ -40,7 +36,6 @@ export default function CourseManagementScreen() {
   const { data: courseData, isLoading, refetch } = useQuery({
     queryKey: ["course-mgmt", courseId],
     queryFn: () => {
-      ensureToken();
       return CourseControllerService.getCourseById({ id: courseId });
     },
   });
@@ -72,7 +67,6 @@ export default function CourseManagementScreen() {
   const handleUpdate = async () => {
     try {
       setIsUpdating(true);
-      ensureToken();
 
       const d = courseData?.data;
       const catId = (d as any)?.category?.id || (d as any)?.categoryId;
@@ -122,7 +116,6 @@ export default function CourseManagementScreen() {
   const handleUploadCourseImage = async (uri: string, name: string, mimeType: string) => {
     try {
       setIsUploadingImg(true);
-      ensureToken();
 
       const uploaded = await uploadFileToS3(uri, name, mimeType);
 

@@ -14,9 +14,9 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 
-import { CourseControllerService, OpenAPI } from "../../api/course";
 import { useAuthStore } from "../../store/useAuthStore";
 import { RootStackParamList } from "../../navigation/AppNavigator";
+import { CourseControllerService } from "@/services/api/CourseControllerService";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -36,8 +36,6 @@ export default function InstructorCoursesScreen() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["instructor-courses", user?.id],
     queryFn: () => {
-      const token = useAuthStore.getState().accessToken;
-      if (token) OpenAPI.TOKEN = token;
       return CourseControllerService.getAllCourses({
         instructorId: user?.id,
         size: 100,

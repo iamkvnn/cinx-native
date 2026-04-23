@@ -13,10 +13,10 @@ import Slider from "@react-native-community/slider";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useQuery } from "@tanstack/react-query";
-
-import { CourseControllerService, CategoryControllerService, OpenAPI } from "../../api/course";
 import { useAuthStore } from "../../store/useAuthStore";
 import { RootStackParamList } from "../../navigation/AppNavigator";
+import { CategoryControllerService } from "@/services/api/CategoryControllerService";
+import { CourseControllerService } from "@/services/api/CourseControllerService";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -46,9 +46,6 @@ export default function CreateCourseScreen() {
 
     try {
       setIsCreating(true);
-
-      const accessToken = useAuthStore.getState().accessToken;
-      if (accessToken) OpenAPI.TOKEN = accessToken;
 
       const body = {
         title,

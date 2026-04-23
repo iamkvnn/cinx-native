@@ -16,13 +16,12 @@ import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { OpenAPI } from "../../api/course";
-import { VideoLessonControllerService } from "../../api/course/services/VideoLessonControllerService";
-import { ArticleLessonControllerService } from "../../api/course/services/ArticleLessonControllerService";
-import { AssignmentLessonControllerService } from "../../api/course/services/AssignmentLessonControllerService";
-import { QuizLessonControllerService } from "../../api/course/services/QuizLessonControllerService";
 import { uploadFileToS3 } from "../../utils/uploadToS3";
 import { useAuthStore } from "../../store/useAuthStore";
+import { VideoLessonControllerService } from "@/services/api/VideoLessonControllerService";
+import { ArticleLessonControllerService } from "@/services/api/ArticleLessonControllerService";
+import { AssignmentLessonControllerService } from "@/services/api/AssignmentLessonControllerService";
+import { QuizLessonControllerService } from "@/services/api/QuizLessonControllerService";
 
 type LessonType = "VIDEO" | "ARTICLE" | "ASSIGNMENT" | "QUIZ";
 
@@ -33,11 +32,6 @@ interface Props {
   lessonTitle: string;
   onClose: () => void;
   onSaved: () => void;
-}
-
-function ensureToken() {
-  const token = useAuthStore.getState().accessToken;
-  if (token) OpenAPI.TOKEN = token;
 }
 
 // ─── Video Lesson Form ────────────────────────────────────────────────────────
@@ -54,7 +48,6 @@ function VideoForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => voi
   });
 
   useEffect(() => {
-    ensureToken();
     VideoLessonControllerService.getVideoByLessonId({ lessonId })
       .then((res) => {
         const data = res.data as any;
@@ -69,7 +62,7 @@ function VideoForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => voi
   const handleUploadVideo = async (uri: string, name: string, mimeType: string) => {
     try {
       setIsUploading(true);
-      ensureToken();
+      
 
       const uploaded = await uploadFileToS3(uri, name, mimeType);
 
@@ -209,7 +202,7 @@ function ArticleForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => v
   const [hasExisting, setHasExisting] = useState(false);
 
   useEffect(() => {
-    ensureToken();
+    
     ArticleLessonControllerService.getArticleByLessonId({ lessonId })
       .then((res) => {
         const data = res.data as any;
@@ -229,7 +222,7 @@ function ArticleForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => v
     }
     try {
       setIsSaving(true);
-      ensureToken();
+      
       if (hasExisting) {
         await ArticleLessonControllerService.updateArticleLesson({ lessonId, requestBody: { content } });
       } else {
@@ -288,7 +281,7 @@ function AssignmentForm({ lessonId, onSaved }: { lessonId: string; onSaved: () =
   const [hasExisting, setHasExisting] = useState(false);
 
   useEffect(() => {
-    ensureToken();
+    
     AssignmentLessonControllerService.getAssigmentByLessonId({ lessonId })
       .then((res) => {
         const data = res.data as any;
@@ -314,7 +307,7 @@ function AssignmentForm({ lessonId, onSaved }: { lessonId: string; onSaved: () =
       if (result.canceled || !result.assets?.[0]) return;
       const file = result.assets[0];
       setIsUploading(true);
-      ensureToken();
+      
       const uploaded = await uploadFileToS3(file.uri, file.name, file.mimeType ?? "application/octet-stream");
       setAttachmentKey(uploaded.fileKey);
       setAttachmentName(uploaded.fileName);
@@ -335,7 +328,7 @@ function AssignmentForm({ lessonId, onSaved }: { lessonId: string; onSaved: () =
     }
     try {
       setIsSaving(true);
-      ensureToken();
+      
       const payload = {
         lessonId,
         requestBody: {
@@ -432,7 +425,7 @@ function QuizForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => void
   const [hasExisting, setHasExisting] = useState(false);
 
   useEffect(() => {
-    ensureToken();
+    
     QuizLessonControllerService.getQuizByLessonId({ lessonId })
       .then((res) => {
         const data = res.data as any;
@@ -491,7 +484,7 @@ function QuizForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => void
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      ensureToken();
+      
       const payload = {
         lessonId,
         requestBody: {

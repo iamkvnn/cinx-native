@@ -1,8 +1,4 @@
-import {
-  PresignedUrlControllerService as CoursePresignedUrlService,
-  OpenAPI,
-} from "../api/course";
-import { PresignedUrlControllerService as UserPresignedUrlService } from "../services/api/PresignedUrlControllerService";
+import { PresignedUrlControllerService, PresignedUrlControllerService as UserPresignedUrlService } from "../services/api/PresignedUrlControllerService";
 import { PresignedUrlControllerService as LearningPresignedUrlService } from "../services/api/PresignedUrlControllerService";
 import { useAuthStore } from "../store/useAuthStore";
 
@@ -18,13 +14,9 @@ export async function uploadFileToS3(
   fileName: string,
   mimeType: string,
 ): Promise<UploadResult> {
-  const accessToken = useAuthStore.getState().accessToken;
-  if (accessToken) {
-    OpenAPI.TOKEN = accessToken;
-  }
 
   // 1. Get presigned URL from backend
-  const presignedRes = await CoursePresignedUrlService.getPresignedUrl({
+  const presignedRes = await PresignedUrlControllerService.getPresignedUrl({
     fileName,
     contentType: mimeType,
   });

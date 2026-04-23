@@ -16,11 +16,11 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 
-import { CourseControllerService, OpenAPI } from "../../api/course";
-import { LearningProgressControllerService } from "../../api/learning";
-import { ReviewControllerService } from "../../api/social";
 import { useAuthStore } from "../../store/useAuthStore";
 import { RootStackParamList } from "../../navigation/AppNavigator";
+import { CourseControllerService } from "@/services/api/CourseControllerService";
+import { LearningProgressControllerService } from "@/services/api/LearningProgressControllerService";
+import { ReviewControllerService } from "@/services/api/ReviewControllerService";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -39,8 +39,6 @@ export default function DashboardScreen() {
   } = useQuery({
     queryKey: ["instructor-courses-dashboard", user?.id],
     queryFn: () => {
-      const token = useAuthStore.getState().accessToken;
-      if (token) OpenAPI.TOKEN = token;
       return CourseControllerService.getAllCourses({
         instructorId: user?.id,
         size: 100,
@@ -60,16 +58,13 @@ export default function DashboardScreen() {
   } = useQuery({
     queryKey: ["instructor-dashboard-details", publishedCourses.map((c) => c.id).join(",")],
     queryFn: async () => {
-      const token = useAuthStore.getState().accessToken;
-      if (token) OpenAPI.TOKEN = token;
-
       if (publishedCourses.length === 0) {
         return { progressMap: {}, recentReviews: [] };
       }
 
       // Fetch progress
       const progressPromises = publishedCourses.map((c) =>
-        LearningProgressControllerService.getCourseProgress({ courseId: c.id! })
+        LearningProgressControllerService.getCourseProgressByCourseId({ courseId: c.id! })
           .then((res) => ({ courseId: c.id, progressList: res.data || [] }))
           .catch(() => ({ courseId: c.id, progressList: [] }))
       );
