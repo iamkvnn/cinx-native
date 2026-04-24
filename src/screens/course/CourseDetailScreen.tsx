@@ -767,7 +767,7 @@ export default function CourseDetailScreen({
             </View>
 
             {progressPercent === 100 ? (
-              certData ? (
+              certData && certData.status ? (
                 <View
                   className={`h-12 w-[52%] flex-row items-center justify-center gap-2 rounded-2xl ${
                     certData.status === "APPROVED"

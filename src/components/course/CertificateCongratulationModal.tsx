@@ -7,6 +7,7 @@ import {
   Pressable,
   Animated,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
@@ -55,32 +56,36 @@ export default function CertificateCongratulationModal({
             Bạn đủ điều kiện để nhận chứng chỉ cho khóa học này. Hãy gửi yêu cầu ngay để được giảng viên xét duyệt.
           </Text>
 
-          <View style={styles.buttonWrapper}>
+          <View className="w-full mt-4">
             <Pressable
-              style={({ pressed }) => [
-                styles.requestButton,
-                pressed && { opacity: 0.8 },
-                isProcessing && { backgroundColor: "#94a3b8" }
-              ]}
+              className={`h-14 w-full flex-row items-center justify-center rounded-2xl bg-violet-600 ${
+                isProcessing ? "opacity-70" : ""
+              }`}
               onPress={onRequestCertificate}
               disabled={isProcessing}
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Text style={styles.requestButtonText}>
-                  {isProcessing ? "Đang gửi..." : "Gửi yêu cầu cấp chứng chỉ"}
-                </Text>
-                {!isProcessing && <Ionicons name="send" size={16} color="#fff" />}
-              </View>
+              {isProcessing ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Text className="text-sm font-bold text-white">
+                    Gửi yêu cầu cấp chứng chỉ
+                  </Text>
+                  <Ionicons
+                    name="send"
+                    size={16}
+                    color="#fff"
+                    style={{ marginLeft: 8 }}
+                  />
+                </>
+              )}
             </Pressable>
-
+            
             <Pressable
-              style={({ pressed }) => [
-                styles.closeButton,
-                pressed && { opacity: 0.7 }
-              ]}
+              className="mt-2 h-14 w-full items-center justify-center rounded-2xl"
               onPress={onClose}
             >
-              <Text style={styles.closeButtonText}>Để sau</Text>
+              <Text className="text-sm font-bold text-slate-500">Để sau</Text>
             </Pressable>
           </View>
         </View>
@@ -150,14 +155,17 @@ const styles = StyleSheet.create({
   },
   buttonWrapper: {
     width: "100%",
-    gap: 12,
+    marginTop: 10,
   },
   requestButton: {
     backgroundColor: "#7c3aed",
+    width: "100%",
     height: 54,
     borderRadius: 16,
+    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    marginBottom: 12,
   },
   requestButtonText: {
     color: "#fff",
@@ -165,6 +173,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   closeButton: {
+    width: "100%",
     height: 54,
     borderRadius: 16,
     justifyContent: "center",
