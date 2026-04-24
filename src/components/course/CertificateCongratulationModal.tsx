@@ -65,9 +65,12 @@ export default function CertificateCongratulationModal({
               onPress={onRequestCertificate}
               disabled={isProcessing}
             >
-              <Text style={styles.requestButtonText}>
-                {isProcessing ? "Đang gửi..." : "Yêu cầu nhận chứng chỉ"}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text style={styles.requestButtonText}>
+                  {isProcessing ? "Đang gửi..." : "Gửi yêu cầu cấp chứng chỉ"}
+                </Text>
+                {!isProcessing && <Ionicons name="send" size={16} color="#fff" />}
+              </View>
             </Pressable>
 
             <Pressable

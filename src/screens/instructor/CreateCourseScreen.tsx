@@ -8,6 +8,8 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import Slider from "@react-native-community/slider";
 import { useNavigation } from "@react-navigation/native";
@@ -106,85 +108,107 @@ export default function CreateCourseScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.label}>Course Title *</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="E.g. Advanced React Native"
-        value={title}
-        onChangeText={setTitle}
-      />
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
+    >
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text style={styles.label}>Course Title *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="E.g. Advanced React Native"
+          value={title}
+          onChangeText={setTitle}
+        />
 
-      <Text style={styles.label}>Description</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Course description..."
-        value={description}
-        onChangeText={setDescription}
-        multiline
-        numberOfLines={4}
-        textAlignVertical="top"
-      />
+        <Text style={styles.label}>Description</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Course description..."
+          value={description}
+          onChangeText={setDescription}
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+        />
 
-      <Text style={styles.label}>Category *</Text>
-      <View style={styles.categoryContainer}>
-        {categories.map((cat) => (
-          <Pressable
-            key={cat.id}
-            style={[styles.categoryChip, categoryId === cat.id && styles.categoryChipSelected]}
-            onPress={() => setCategoryId(cat.id || "")}
-          >
-            <Text style={[styles.categoryChipText, categoryId === cat.id && styles.categoryChipTextSelected]}>
-              {cat.name}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+        <Text style={styles.label}>Category *</Text>
+        <View style={styles.categoryContainer}>
+          {categories.map((cat) => (
+            <Pressable
+              key={cat.id}
+              style={[
+                styles.categoryChip,
+                categoryId === cat.id && styles.categoryChipSelected,
+              ]}
+              onPress={() => setCategoryId(cat.id || "")}
+            >
+              <Text
+                style={[
+                  styles.categoryChipText,
+                  categoryId === cat.id && styles.categoryChipTextSelected,
+                ]}
+              >
+                {cat.name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
 
-      <Text style={styles.label}>Price (VND) *</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="E.g. 500000"
-        value={price}
-        onChangeText={setPrice}
-        keyboardType="numeric"
-      />
+        <Text style={styles.label}>Price (VND) *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="E.g. 500000"
+          value={price}
+          onChangeText={setPrice}
+          keyboardType="numeric"
+        />
 
-      {/* Duration Slider */}
-      <Text style={styles.label}>Course Duration: <Text style={styles.labelValue}>{duration} minutes</Text></Text>
-      <Slider
-        style={styles.slider}
-        minimumValue={90}
-        maximumValue={240}
-        step={5}
-        value={duration}
-        onValueChange={(v) => setDuration(Math.round(v))}
-        minimumTrackTintColor="#7958ee"
-        maximumTrackTintColor="#e2e8f0"
-        thumbTintColor="#7958ee"
-      />
-      <View style={styles.sliderLabels}>
-        <Text style={styles.sliderLabel}>90 min</Text>
-        <Text style={styles.sliderLabel}>240 min</Text>
-      </View>
+        {/* Duration Slider */}
+        <Text style={styles.label}>
+          Course Duration: <Text style={styles.labelValue}>{duration} minutes</Text>
+        </Text>
+        <Slider
+          style={styles.slider}
+          minimumValue={90}
+          maximumValue={240}
+          step={5}
+          value={duration}
+          onValueChange={(v) => setDuration(Math.round(v))}
+          minimumTrackTintColor="#7958ee"
+          maximumTrackTintColor="#e2e8f0"
+          thumbTintColor="#7958ee"
+        />
+        <View style={styles.sliderLabels}>
+          <Text style={styles.sliderLabel}>90 min</Text>
+          <Text style={styles.sliderLabel}>240 min</Text>
+        </View>
 
-      {/* Certificate */}
-      <Text style={styles.label}>Certificate Title (leave blank to use course title)</Text>
-      <TextInput
-        style={styles.input}
-        placeholder={title || "Certificate of Completion"}
-        value={certificateTitle}
-        onChangeText={setCertificateTitle}
-      />
+        {/* Certificate */}
+        <Text style={styles.label}>
+          Certificate Title (leave blank to use course title)
+        </Text>
+        <TextInput
+          style={styles.input}
+          placeholder={title || "Certificate of Completion"}
+          value={certificateTitle}
+          onChangeText={setCertificateTitle}
+        />
 
-      <Pressable style={styles.submitButton} onPress={handleCreate} disabled={isCreating}>
-        {isCreating ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.submitButtonText}>Create Course</Text>
-        )}
-      </Pressable>
-    </ScrollView>
+        <Pressable
+          style={styles.submitButton}
+          onPress={handleCreate}
+          disabled={isCreating}
+        >
+          {isCreating ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.submitButtonText}>Create Course</Text>
+          )}
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

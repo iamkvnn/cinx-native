@@ -43,6 +43,8 @@ import {
   formatPriceK as formatPriceKShared,
   resolvePricing,
 } from "../../utils/pricing";
+import { CertificateControllerService } from "../../services/api/CertificateControllerService";
+import CertificateCongratulationModal from "../../components/course/CertificateCongratulationModal";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 
 type CourseDetailScreenProps = NativeStackScreenProps<
@@ -215,6 +217,8 @@ export default function CourseDetailScreen({
   const [isAddingToCart, setIsAddingToCart] = useState(false);
   const [isBuyingNow, setIsBuyingNow] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [isRequestingCert, setIsRequestingCert] = useState(false);
+  const [showCongratsModal, setShowCongratsModal] = useState(false);
 
   const courseId = String(route.params?.courseId ?? "").trim();
   const hasValidCourseId = courseId.length > 0;
@@ -267,8 +271,16 @@ export default function CourseDetailScreen({
     retry: false,
   });
 
+  const certificateQuery = useQuery({
+    queryKey: ["course-certificate", courseId],
+    queryFn: () => CertificateControllerService.getMyCertificate({ courseId }),
+    enabled: hasValidCourseId && Boolean(user) && isPurchased,
+    retry: false,
+  });
+
   const course = courseQuery.data;
   const courseTitle = course?.title ?? "Chi tiết khóa học";
+  const certData = certificateQuery.data?.data;
   const completedLessonIds = useMemo(() => {
     return extractCompletedLessonIds(itemProgressQuery.data?.data);
   }, [itemProgressQuery.data?.data]);
@@ -435,6 +447,24 @@ export default function CourseDetailScreen({
     }
 
     navigation.navigate("Checkout", { courseId: String(courseId) });
+  };
+
+  const handleRequestCertificate = async () => {
+    if (isRequestingCert) return;
+    try {
+      setIsRequestingCert(true);
+      await CertificateControllerService.applyForCertificate({ courseId });
+      await queryClient.invalidateQueries({
+        queryKey: ["course-certificate", courseId],
+      });
+      setShowCongratsModal(false);
+      Alert.alert("Thành công", "Yêu cầu cấp chứng chỉ đã được gửi.");
+    } catch (error: any) {
+      const msg = error.response?.data?.message || "Không thể gửi yêu cầu.";
+      Alert.alert("Thông báo", msg);
+    } finally {
+      setIsRequestingCert(false);
+    }
   };
 
   const handleOpenCurrentLesson = (): void => {
@@ -736,13 +766,58 @@ export default function CourseDetailScreen({
               </View>
             </View>
 
-            <Pressable
-              className="h-12 w-[48%] flex-row items-center justify-center gap-2 rounded-2xl bg-slate-900"
-              onPress={handleContinueLearning}
-            >
-              <Text className="text-sm font-bold text-white">Tiếp tục học</Text>
-              <Ionicons name="play-circle" size={18} color="#fff" />
-            </Pressable>
+            {progressPercent === 100 ? (
+              certData ? (
+                <View
+                  className={`h-12 w-[52%] flex-row items-center justify-center gap-2 rounded-2xl ${
+                    certData.status === "APPROVED"
+                      ? "bg-emerald-500"
+                      : certData.status === "REJECTED"
+                        ? "bg-red-500"
+                        : "bg-amber-500"
+                  }`}
+                >
+                  <Text className="text-[13px] font-bold text-white">
+                    {certData.status === "APPROVED"
+                      ? "Đã cấp chứng chỉ"
+                      : certData.status === "REJECTED"
+                        ? "Yêu cầu bị từ chối"
+                        : "Đang chờ duyệt"}
+                  </Text>
+                  <Ionicons
+                    name={
+                      certData.status === "APPROVED"
+                        ? "ribbon"
+                        : certData.status === "REJECTED"
+                          ? "close-circle"
+                          : "time"
+                    }
+                    size={18}
+                    color="#fff"
+                  />
+                </View>
+              ) : (
+                <Pressable
+                  className="h-12 w-[48%] flex-row items-center justify-center gap-2 rounded-2xl bg-violet-600"
+                  onPress={() => setShowCongratsModal(true)}
+                >
+                  <Text className="text-sm font-bold text-white">
+                    Nhận chứng chỉ
+                  </Text>
+                  <Ionicons name="trophy" size={18} color="#fff" />
+                </Pressable>
+              )
+            ) : (
+              <Pressable
+                className="h-12 w-[48%] flex-row items-center justify-center gap-2 rounded-2xl bg-slate-900"
+                onPress={handleContinueLearning}
+              >
+                <Text className="text-sm font-bold text-white">
+                  Tiếp tục học
+                </Text>
+                <Ionicons name="play-circle" size={18} color="#fff" />
+              </Pressable>
+            )}
           </View>
         ) : (
           <View className="flex-row items-center gap-3">
@@ -786,6 +861,13 @@ export default function CourseDetailScreen({
           </View>
         )}
       </View>
+      <CertificateCongratulationModal
+        visible={showCongratsModal}
+        courseTitle={courseTitle}
+        onClose={() => setShowCongratsModal(false)}
+        onRequestCertificate={handleRequestCertificate}
+        isProcessing={isRequestingCert}
+      />
     </SafeAreaView>
   );
 }

@@ -571,17 +571,36 @@ function QuizForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => void
       return;
     }
 
-    if (pickerMode === "date") {
+    if (Platform.OS === "android") {
+      if (pickerMode === "date") {
+        setPickerWorkingDate(selectedDate);
+        setPickerMode("time");
+      } else {
+        const merged = new Date(pickerWorkingDate);
+        merged.setHours(
+          selectedDate.getHours(),
+          selectedDate.getMinutes(),
+          0,
+          0,
+        );
+        applyPickedDateTime(merged);
+        setPickerVisible(false);
+        setPickerMode("date");
+      }
+    } else {
+      // iOS: just update the working date as they scroll
       setPickerWorkingDate(selectedDate);
-      setPickerMode("time");
-      return;
     }
+  };
 
-    const merged = new Date(pickerWorkingDate);
-    merged.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
-    applyPickedDateTime(merged);
-    setPickerVisible(false);
-    setPickerMode("date");
+  const handleConfirmPicker = () => {
+    if (pickerMode === "date") {
+      setPickerMode("time");
+    } else {
+      applyPickedDateTime(pickerWorkingDate);
+      setPickerVisible(false);
+      setPickerMode("date");
+    }
   };
 
   const handleSave = async () => {
@@ -690,7 +709,16 @@ function QuizForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => void
       </View>
 
       {pickerVisible ? (
-        <View style={{ marginTop: 10 }}>
+        <View
+          style={{
+            marginTop: 10,
+            backgroundColor: "#f8fafc",
+            borderRadius: 12,
+            padding: 10,
+            borderWidth: 1,
+            borderColor: "#e2e8f0",
+          }}
+        >
           <DateTimePicker
             value={pickerWorkingDate}
             mode={pickerMode}
@@ -698,11 +726,35 @@ function QuizForm({ lessonId, onSaved }: { lessonId: string; onSaved: () => void
             display={Platform.OS === "ios" ? "spinner" : "default"}
             onChange={handleDateTimeChange}
           />
-          <Text style={formStyles.pickerHint}>
-            {pickerMode === "date"
-              ? "Bước 1/2: Chọn ngày"
-              : "Bước 2/2: Chọn giờ"}
-          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginTop: 4,
+            }}
+          >
+            <Text style={formStyles.pickerHint}>
+              {pickerMode === "date"
+                ? "Bước 1/2: Chọn ngày"
+                : "Bước 2/2: Chọn giờ"}
+            </Text>
+            {Platform.OS === "ios" && (
+              <Pressable
+                onPress={handleConfirmPicker}
+                style={{
+                  backgroundColor: "#7958ee",
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>
+                  {pickerMode === "date" ? "Tiếp theo" : "Xác nhận"}
+                </Text>
+              </Pressable>
+            )}
+          </View>
         </View>
       ) : null}
 

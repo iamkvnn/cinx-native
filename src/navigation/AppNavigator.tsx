@@ -361,6 +361,8 @@ export default function AppNavigator(): ReactElement {
               title: "Tạo Khoá Học Mới",
               headerShown: true,
               headerTintColor: "#2563eb",
+              headerBackTitle: "",
+              headerBackButtonDisplayMode: "minimal",
             }}
           />
           <RootStack.Screen
