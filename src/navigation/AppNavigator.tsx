@@ -1,67 +1,647 @@
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import type { ReactElement } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect } from "react";
+import type { NavigatorScreenParams } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { useQuery } from "@tanstack/react-query";
+import {
+  createMaterialTopTabNavigator,
+  type MaterialTopTabBarProps,
+} from "@react-navigation/material-top-tabs";
+import { Ionicons } from "@expo/vector-icons";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { BlurView } from "expo-blur";
+import { useAuthStore } from "../store/useAuthStore";
 
-type RootStackParamList = {
-  Login: undefined;
-  MainTabs: undefined;
+// Import Screens
+import LoginScreen from "../screens/auth/LoginScreen";
+import HomeScreen from "../screens/main/HomeScreen";
+import ExploreScreen from "../screens/main/ExploreScreen";
+import MyLearningScreen from "../screens/main/MyLearningScreen";
+import { ProfileScreen, PurchaseHistoryScreen } from "../screens/profile";
+import CourseDetailScreen from "../screens/course/CourseDetailScreen";
+import VideoLessonScreen from "../screens/course/VideoLessonScreen";
+import QuizLessonScreen from "../screens/course/QuizLessonScreen";
+import AssignmentLessonScreen from "../screens/course/AssignmentLessonScreen";
+import ArticleLessonScreen from "../screens/course/ArticleLessonScreen";
+import NotificationsScreen from "../screens/profile/NotificationsScreen";
+import CartScreen from "../screens/ecommerce/CartScreen";
+import CheckoutScreen from "../screens/ecommerce/CheckoutScreen";
+import LandingPage from "../screens/landing/LandingPage";
+import { fetchCart } from "../services/api/cartApi";
+import { NotificationControllerService } from "../services/api/NotificationControllerService";
+import {
+  MyCertificatesScreen,
+  VouchersScreen,
+} from "../screens/profile/ProfileMenuScreens";
+
+import DashboardScreen from "../screens/instructor/DashboardScreen";
+import InstructorCoursesScreen from "../screens/instructor/InstructorCoursesScreen";
+import CreateCourseScreen from "../screens/instructor/CreateCourseScreen";
+import CourseManagementScreen from "../screens/instructor/CourseManagementScreen";
+import CurriculumBuilderScreen from "../screens/instructor/CurriculumBuilderScreen";
+import CourseStudentsProgressScreen from "../screens/instructor/CourseStudentsProgressScreen";
+import AssignmentGradingScreen from "../screens/instructor/AssignmentGradingScreen";
+
+export type RootStackParamList = {
+  Landing: undefined;
+  Login:
+    | {
+        redirectTo?: "CourseDetail";
+        courseId?: string;
+      }
+    | undefined;
+  MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
+  InstructorTabs: NavigatorScreenParams<InstructorTabParamList> | undefined;
+  CreateCourse: undefined;
+  CourseManagement: { courseId: string };
+  CurriculumBuilder: { courseId: string };
+  CourseStudentsProgress: { courseId: string; courseTitle: string };
+  CourseDetail: {
+    courseId?: string;
+    initialTab?: "about" | "curriculum" | "reviews";
+  };
+  VideoLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
+  ArticleLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
+  QuizLesson: { lessonId: string; courseId?: string; lessonTitle?: string };
+  AssignmentLesson: {
+    lessonId: string;
+    courseId?: string;
+    lessonTitle?: string;
+  };
+  Cart: undefined;
+  Checkout: { courseId?: string; fromCart?: boolean; selectedCartItemIds?: string[] };
+  MyCertificates: undefined;
+  OrderHistory: undefined;
+  Notifications: undefined;
+  Vouchers: undefined;
 };
 
-type MainTabParamList = {
-  Placeholder: undefined;
+export type MainTabParamList = {
+  Home: undefined;
+  Explore: undefined;
+  MyLearning: undefined;
+  Cart: undefined;
+  Profile: undefined;
+};
+
+export type InstructorTabParamList = {
+  Dashboard: undefined;
+  MyCourses: undefined;
+  AssignmentGrading: undefined;
+  Profile: undefined;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator<MainTabParamList>();
+const Tab = createMaterialTopTabNavigator<MainTabParamList>();
+const InstructorTab = createMaterialTopTabNavigator<InstructorTabParamList>();
 
-function LoginScreen(): ReactElement {
-  return (
-    <View style={styles.centeredScreen}>
-      <Text style={styles.label}>Login Screen</Text>
-    </View>
-  );
-}
+const TAB_ICON_MAP: Record<
+  keyof MainTabParamList,
+  "home" | "search" | "bookmark" | "cart" | "person"
+> = {
+  Home: "home",
+  Explore: "search",
+  MyLearning: "bookmark",
+  Cart: "cart",
+  Profile: "person",
+};
 
-function PlaceholderTabScreen(): ReactElement {
+const INSTRUCTOR_TAB_ICON_MAP: Record<
+  keyof InstructorTabParamList,
+  "stats-chart" | "library" | "create" | "person"
+> = {
+  Dashboard: "stats-chart",
+  MyCourses: "library",
+  AssignmentGrading: "create",
+  Profile: "person",
+};
+
+function GlassSwipeTabBar({
+  state,
+  descriptors,
+  navigation,
+  cartCount,
+  notificationCount,
+  iconMap,
+}: MaterialTopTabBarProps & {
+  cartCount: number;
+  notificationCount: number;
+  iconMap: Record<string, any>;
+}): ReactElement {
   return (
-    <View style={styles.centeredScreen}>
-      <Text style={styles.label}>Main Tabs Placeholder</Text>
+    <View style={styles.tabBar}>
+      <View style={styles.tabBarBackgroundContainer} pointerEvents="none">
+        <BlurView
+          intensity={60}
+          tint="light"
+          style={styles.blurFill}
+          experimentalBlurMethod="dimezisBlurView"
+        />
+        <View style={styles.tabBarGlassTint} />
+      </View>
+
+      <View style={styles.tabItemsRow}>
+        {state.routes.map((route, index) => {
+          const isFocused = state.index === index;
+          const color = isFocused ? "#7958ee" : "#64748b";
+          const iconName = iconMap[route.name];
+          const { options } = descriptors[route.key];
+          const tabBadge =
+            route.name === "Cart"
+              ? cartCount
+              : route.name === "Profile"
+                ? notificationCount
+                : 0;
+
+          const onPress = (): void => {
+            const event = navigation.emit({
+              type: "tabPress",
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
+          };
+
+          return (
+            <Pressable
+              key={route.key}
+              onPress={onPress}
+              accessibilityRole="button"
+              accessibilityState={isFocused ? { selected: true } : {}}
+              accessibilityLabel={options.tabBarAccessibilityLabel}
+              testID={options.tabBarButtonTestID}
+              style={styles.tabButton}
+            >
+              <Ionicons name={iconName} size={24} color={color} />
+              {tabBadge > 0 ? (
+                <View style={styles.tabBadgeTextWrap}>
+                  <View style={styles.tabBadgePill}>
+                    <Text style={styles.tabBadgeText}>
+                      {tabBadge > 99 ? "99+" : tabBadge}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 function MainTabs(): ReactElement {
+  const user = useAuthStore((state) => state.user);
+  const cartQuery = useQuery({
+    queryKey: ["cart", "badge"],
+    queryFn: fetchCart,
+    enabled: Boolean(user),
+    retry: false,
+  });
+  const unreadNotificationsQuery = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () => NotificationControllerService.countUnreadNotifications(),
+    enabled: Boolean(user),
+    retry: false,
+  });
+  const cartCount = cartQuery.data?.items?.length || 0;
+  const notificationCount = Number(unreadNotificationsQuery.data?.data ?? 0);
+
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }}>
+    <Tab.Navigator
+      tabBarPosition="bottom"
+      tabBar={(props) => (
+        <GlassSwipeTabBar
+          {...props}
+          cartCount={cartCount}
+          notificationCount={notificationCount}
+          iconMap={TAB_ICON_MAP}
+        />
+      )}
+      screenOptions={{
+        swipeEnabled: true,
+        animationEnabled: true,
+        lazy: false,
+      }}
+    >
       <Tab.Screen
-        name="Placeholder"
-        component={PlaceholderTabScreen}
-        options={{ title: "Main" }}
+        name="Home"
+        component={HomeScreen}
+        options={{
+          title: "Home",
+        }}
+      />
+      <Tab.Screen
+        name="Explore"
+        component={ExploreScreen}
+        options={{
+          title: "Explore",
+        }}
+      />
+      <Tab.Screen
+        name="MyLearning"
+        component={MyLearningScreen}
+        options={{
+          title: "My learning",
+        }}
+      />
+      <Tab.Screen
+        name="Cart"
+        component={CartScreen}
+        options={{
+          title: "Cart",
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: "Profile",
+        }}
       />
     </Tab.Navigator>
   );
 }
 
+function InstructorTabs(): ReactElement {
+  const user = useAuthStore((state) => state.user);
+  const unreadNotificationsQuery = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () => NotificationControllerService.countUnreadNotifications(),
+    enabled: Boolean(user),
+    retry: false,
+  });
+  const notificationCount = Number(unreadNotificationsQuery.data?.data ?? 0);
+
+  return (
+    <InstructorTab.Navigator
+      tabBarPosition="bottom"
+      tabBar={(props) => (
+        <GlassSwipeTabBar
+          {...props}
+          cartCount={0}
+          notificationCount={notificationCount}
+          iconMap={INSTRUCTOR_TAB_ICON_MAP}
+        />
+      )}
+      screenOptions={{
+        swipeEnabled: true,
+        animationEnabled: true,
+        lazy: false,
+      }}
+    >
+      <InstructorTab.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{
+          title: "Dashboard",
+        }}
+      />
+      <InstructorTab.Screen
+        name="MyCourses"
+        component={InstructorCoursesScreen}
+        options={{
+          title: "My Courses",
+        }}
+      />
+      <InstructorTab.Screen
+        name="AssignmentGrading"
+        component={AssignmentGradingScreen}
+        options={{
+          title: "Chấm bài",
+        }}
+      />
+      <InstructorTab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: "Profile",
+        }}
+      />
+    </InstructorTab.Navigator>
+  );
+}
+
 export default function AppNavigator(): ReactElement {
+  const user = useAuthStore((state) => state.user);
+  const isHydrated = useAuthStore((state) => state.isHydrated);
+  const hydrateAuth = useAuthStore((state) => state.hydrateAuth);
+
+  useEffect(() => {
+    hydrateAuth();
+  }, [hydrateAuth]);
+
+  if (!isHydrated) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" }}>
+        <ActivityIndicator size="large" color="#7958ee" />
+      </View>
+    );
+  }
+
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      <RootStack.Screen name="Login" component={LoginScreen} />
-      <RootStack.Screen name="MainTabs" component={MainTabs} />
+      {user ? (
+        <RootStack.Group screenOptions={{ headerShown: false }}>
+          {user.role === "INSTRUCTOR" ? (
+            <RootStack.Screen
+              name="InstructorTabs"
+              component={InstructorTabs}
+            />
+          ) : (
+            <RootStack.Screen name="MainTabs" component={MainTabs} />
+          )}
+          <RootStack.Screen
+            name="CreateCourse"
+            component={CreateCourseScreen}
+            options={{
+              title: "Tạo Khoá Học Mới",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+            }}
+          />
+          <RootStack.Screen
+            name="CourseManagement"
+            component={CourseManagementScreen}
+            options={{
+              title: "Quản Lý Khoá Học",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+              headerBackTitle: "",
+              headerBackButtonDisplayMode: "minimal",
+            }}
+          />
+          <RootStack.Screen
+            name="CurriculumBuilder"
+            component={CurriculumBuilderScreen}
+            options={{
+              title: "Chương Trình Học",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+              headerBackTitle: "",
+              headerBackButtonDisplayMode: "minimal",
+            }}
+          />
+          <RootStack.Screen
+            name="Cart"
+            component={CartScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen
+            name="Checkout"
+            component={CheckoutScreen}
+            options={{
+              title: "Thanh Toán",
+              headerShown: true,
+              headerTintColor: "#2563eb",
+              headerBackTitle: "",
+              headerBackButtonDisplayMode: "minimal",
+            }}
+          />
+          <RootStack.Screen
+            name="MyCertificates"
+            component={MyCertificatesScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen
+            name="OrderHistory"
+            component={PurchaseHistoryScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen
+            name="Vouchers"
+            component={VouchersScreen}
+            options={{
+              headerShown: false,
+            }}
+          />
+        </RootStack.Group>
+      ) : (
+        <RootStack.Group screenOptions={{ headerShown: false }}>
+          <RootStack.Screen name="Landing" component={LandingPage} />
+          <RootStack.Screen name="Login" component={LoginScreen} />
+        </RootStack.Group>
+      )}
+
+      <RootStack.Group screenOptions={{ headerShown: false }}>
+        <RootStack.Screen name="CourseDetail" component={CourseDetailScreen} />
+        <RootStack.Screen
+          name="CourseStudentsProgress"
+          component={CourseStudentsProgressScreen}
+          options={{
+            headerShown: true,
+            title: "Tiến độ học viên",
+            headerBackTitle: "",
+            headerBackButtonDisplayMode: "minimal",
+            headerTintColor: "#7958ee",
+          }}
+        />
+        <RootStack.Screen
+          name="VideoLesson"
+          component={VideoLessonScreen}
+          options={({ navigation, route }) => ({
+            headerShown: true,
+            title: "Video bài học",
+            headerBackTitle: "",
+            headerBackButtonDisplayMode: "minimal",
+            headerBackButtonMenuEnabled: false,
+            animationTypeForReplace: "push",
+            headerTintColor: "#2563eb",
+            headerLeft: () => (
+              <Pressable
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                    return;
+                  }
+
+                  navigation.replace("CourseDetail", {
+                    courseId: route.params?.courseId,
+                    initialTab: "curriculum",
+                  });
+                }}
+                hitSlop={12}
+                className="h-10 w-10 items-center justify-center"
+              >
+                <Ionicons name="chevron-back" size={22} color="#2563eb" />
+              </Pressable>
+            ),
+          })}
+        />
+        <RootStack.Screen
+          name="ArticleLesson"
+          component={ArticleLessonScreen}
+          options={({ navigation, route }) => ({
+            headerShown: true,
+            title: "Bài nội dung",
+            headerBackTitle: "",
+            headerBackButtonDisplayMode: "minimal",
+            headerBackButtonMenuEnabled: false,
+            animationTypeForReplace: "push",
+            headerTintColor: "#2563eb",
+            headerLeft: () => (
+              <Pressable
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                    return;
+                  }
+
+                  navigation.replace("CourseDetail", {
+                    courseId: route.params?.courseId,
+                    initialTab: "curriculum",
+                  });
+                }}
+                hitSlop={12}
+                className="h-10 w-10 items-center justify-center"
+              >
+                <Ionicons name="chevron-back" size={22} color="#2563eb" />
+              </Pressable>
+            ),
+          })}
+        />
+        <RootStack.Screen
+          name="QuizLesson"
+          component={QuizLessonScreen}
+          options={({ navigation, route }) => ({
+            headerShown: true,
+            title: "Bài quiz",
+            headerBackTitle: "",
+            headerBackButtonDisplayMode: "minimal",
+            headerBackButtonMenuEnabled: false,
+            animationTypeForReplace: "push",
+            headerTintColor: "#2563eb",
+            headerLeft: () => (
+              <Pressable
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                    return;
+                  }
+
+                  navigation.replace("CourseDetail", {
+                    courseId: route.params?.courseId,
+                    initialTab: "curriculum",
+                  });
+                }}
+                hitSlop={12}
+                className="h-10 w-10 items-center justify-center"
+              >
+                <Ionicons name="chevron-back" size={22} color="#2563eb" />
+              </Pressable>
+            ),
+          })}
+        />
+        <RootStack.Screen
+          name="AssignmentLesson"
+          component={AssignmentLessonScreen}
+          options={({ navigation, route }) => ({
+            headerShown: true,
+            title: "Assignment",
+            headerBackTitle: "",
+            headerBackButtonDisplayMode: "minimal",
+            headerBackButtonMenuEnabled: false,
+            animationTypeForReplace: "push",
+            headerTintColor: "#2563eb",
+            headerLeft: () => (
+              <Pressable
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                    return;
+                  }
+
+                  navigation.replace("CourseDetail", {
+                    courseId: route.params?.courseId,
+                    initialTab: "curriculum",
+                  });
+                }}
+                hitSlop={12}
+                className="h-10 w-10 items-center justify-center"
+              >
+                <Ionicons name="chevron-back" size={22} color="#2563eb" />
+              </Pressable>
+            ),
+          })}
+        />
+      </RootStack.Group>
     </RootStack.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
-  centeredScreen: {
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    flex: 1,
-    justifyContent: "center",
+  tabBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    marginHorizontal: 20,
+    bottom: 18,
+    height: 72,
+    borderRadius: 999,
+    backgroundColor: "transparent",
+    elevation: 0,
+    overflow: "hidden",
   },
-  label: {
-    color: "#0f172a",
-    fontSize: 16,
-    fontWeight: "600",
+  tabItemsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flex: 1,
+    paddingHorizontal: 6,
+  },
+  tabButton: {
+    flex: 1,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  tabBadgeTextWrap: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+  },
+  tabBadgePill: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 999,
+    backgroundColor: "#ef4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  tabBadgeText: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  tabBarBackgroundContainer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: "hidden",
+    borderRadius: 999,
+  },
+  tabBarGlassTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(233, 234, 237, 0.58)",
+    borderRadius: 999,
+  },
+  blurFill: {
+    ...StyleSheet.absoluteFillObject,
   },
 });

@@ -40,6 +40,10 @@ yarn-error.*
 /ios
 /android
 
+BACKEND_CONTRACT.md
 AI_DEVELOPMENT_GUIDE.md
 APP_FLOW.md
 docs/
+
+google-services.json
+GoogleService-Info.plist
