@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
+import { useFocusEffect } from "@react-navigation/native";
 import axios from "axios";
-import { useMemo, useState, type ReactElement } from "react";
+import { useCallback, useMemo, type ReactElement } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -46,16 +47,23 @@ export default function NotificationsScreen({
   navigation,
 }: NotificationsScreenProps): ReactElement {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
 
-  const notificationsQuery = useQuery({
-    queryKey: ["notifications", page],
-    queryFn: () =>
+  const notificationsQuery = useInfiniteQuery({
+    queryKey: ["notifications", "infinite"],
+    queryFn: ({ pageParam = 1 }) =>
       NotificationControllerService.getNotifications({
-        page,
+        page: pageParam,
         size: PAGE_SIZE,
       }),
-    retry: false,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: any) => {
+      const totalPages = Number(lastPage.meta?.totalPages ?? 1);
+      const currentPage = Number(lastPage.meta?.page ?? 1);
+      if (currentPage < totalPages) {
+        return currentPage + 1;
+      }
+      return undefined;
+    },
   });
 
   const unreadCountQuery = useQuery({
@@ -64,22 +72,31 @@ export default function NotificationsScreen({
     retry: false,
   });
 
-  const items = (notificationsQuery.data?.data ??
-    []) as UserNotificationResponse[];
-  const totalPages = Number(notificationsQuery.data?.meta?.totalPages ?? 1);
+  useFocusEffect(
+    useCallback(() => {
+      void notificationsQuery.refetch();
+      void unreadCountQuery.refetch();
+    }, [])
+  );
+
+  const items = useMemo(() => {
+    if (!notificationsQuery.data?.pages) return [];
+    return notificationsQuery.data.pages.flatMap((page) => page.data ?? []) as UserNotificationResponse[];
+  }, [notificationsQuery.data]);
+
   const currentUnreadCount = Number(unreadCountQuery.data?.data ?? 0);
 
   const updateNotificationCache = (
     updater: (items: UserNotificationResponse[]) => UserNotificationResponse[],
   ): void => {
-    queryClient.setQueryData(["notifications", page], (current: unknown) => {
-      const currentData = current as
-        | { data?: UserNotificationResponse[]; meta?: unknown }
-        | undefined;
-
+    queryClient.setQueryData(["notifications", "infinite"], (current: any) => {
+      if (!current) return current;
       return {
-        ...currentData,
-        data: updater(currentData?.data ?? []),
+        ...current,
+        pages: current.pages.map((page: any) => ({
+          ...page,
+          data: updater(page.data ?? []),
+        })),
       };
     });
   };
@@ -89,14 +106,14 @@ export default function NotificationsScreen({
       await NotificationControllerService.toggleRead({ notificationId });
     },
     onMutate: async (notificationId: string) => {
-      await queryClient.cancelQueries({ queryKey: ["notifications", page] });
+      await queryClient.cancelQueries({ queryKey: ["notifications", "infinite"] });
       await queryClient.cancelQueries({
         queryKey: ["notifications", "unread-count"],
       });
 
       const previousNotifications = queryClient.getQueryData([
         "notifications",
-        page,
+        "infinite",
       ]);
       const previousUnread = queryClient.getQueryData([
         "notifications",
@@ -131,7 +148,7 @@ export default function NotificationsScreen({
     onError: (error, _notificationId, context) => {
       if (context?.previousNotifications) {
         queryClient.setQueryData(
-          ["notifications", page],
+          ["notifications", "infinite"],
           context.previousNotifications,
         );
       }
@@ -147,7 +164,7 @@ export default function NotificationsScreen({
       );
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ["notifications", page] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications", "infinite"] });
       void queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       });
@@ -161,14 +178,14 @@ export default function NotificationsScreen({
       });
     },
     onMutate: async (notificationId: string) => {
-      await queryClient.cancelQueries({ queryKey: ["notifications", page] });
+      await queryClient.cancelQueries({ queryKey: ["notifications", "infinite"] });
       await queryClient.cancelQueries({
         queryKey: ["notifications", "unread-count"],
       });
 
       const previousNotifications = queryClient.getQueryData([
         "notifications",
-        page,
+        "infinite",
       ]);
       const previousUnread = queryClient.getQueryData([
         "notifications",
@@ -200,7 +217,7 @@ export default function NotificationsScreen({
     onError: (error, _notificationId, context) => {
       if (context?.previousNotifications) {
         queryClient.setQueryData(
-          ["notifications", page],
+          ["notifications", "infinite"],
           context.previousNotifications,
         );
       }
@@ -213,25 +230,10 @@ export default function NotificationsScreen({
       Alert.alert("Lỗi", getApiErrorMessage(error, "Không thể xóa thông báo."));
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ["notifications", page] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications", "infinite"] });
       void queryClient.invalidateQueries({
         queryKey: ["notifications", "unread-count"],
       });
-    },
-  });
-
-  const testPushMutation = useMutation({
-    mutationFn: async () => {
-      await NotificationControllerService.testPushNotification({
-        title: "[DEV] Test push notification",
-        body: "Push notification integration is working.",
-      });
-    },
-    onSuccess: () => {
-      Alert.alert("Thành công", "Đã gửi test push notification.");
-    },
-    onError: (error) => {
-      Alert.alert("Lỗi", getApiErrorMessage(error, "Không thể gửi test push."));
     },
   });
 
@@ -242,16 +244,13 @@ export default function NotificationsScreen({
     ]);
   };
 
-  const canGoPrev = page > 1;
-  const canGoNext = page < totalPages;
-
   const headerSubtitle = useMemo(() => {
     return currentUnreadCount > 0
       ? `${currentUnreadCount} thông báo chưa đọc`
       : "Tất cả đã được đọc";
   }, [currentUnreadCount]);
 
-  if (notificationsQuery.isLoading && page === 1) {
+  if (notificationsQuery.isLoading) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-transparent">
         <AppScreenBackground />
@@ -280,6 +279,12 @@ export default function NotificationsScreen({
           paddingBottom: 32,
           gap: 12,
         }}
+        onEndReached={() => {
+          if (notificationsQuery.hasNextPage) {
+            void notificationsQuery.fetchNextPage();
+          }
+        }}
+        onEndReachedThreshold={0.5}
         refreshControl={
           <RefreshControl
             refreshing={notificationsQuery.isRefetching}
@@ -294,46 +299,6 @@ export default function NotificationsScreen({
             <Text className="text-xs font-semibold text-slate-500">
               {headerSubtitle}
             </Text>
-            <View className="mt-1 flex-row items-center gap-2">
-              <Pressable
-                className={`h-9 flex-1 items-center justify-center rounded-2xl ${canGoPrev ? "bg-slate-900" : "bg-slate-300"}`}
-                disabled={!canGoPrev}
-                onPress={() => setPage((previous) => Math.max(1, previous - 1))}
-              >
-                <Text className="text-xs font-bold text-white">
-                  Trang trước
-                </Text>
-              </Pressable>
-              <View className="h-9 flex-1 items-center justify-center rounded-2xl bg-violet-50">
-                <Text className="text-xs font-bold text-violet-700">
-                  {page}/{Math.max(1, totalPages)}
-                </Text>
-              </View>
-              <Pressable
-                className={`h-9 flex-1 items-center justify-center rounded-2xl ${canGoNext ? "bg-violet-600" : "bg-slate-300"}`}
-                disabled={!canGoNext}
-                onPress={() =>
-                  setPage((previous) => Math.min(totalPages, previous + 1))
-                }
-              >
-                <Text className="text-xs font-bold text-white">Trang sau</Text>
-              </Pressable>
-            </View>
-            {__DEV__ ? (
-              <Pressable
-                className="mt-2 h-9 items-center justify-center rounded-2xl bg-amber-500"
-                disabled={testPushMutation.isPending}
-                onPress={() => {
-                  void testPushMutation.mutateAsync();
-                }}
-              >
-                <Text className="text-xs font-bold text-white">
-                  {testPushMutation.isPending
-                    ? "Đang gửi test push..."
-                    : "[DEV] Gửi test push"}
-                </Text>
-              </Pressable>
-            ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -346,6 +311,13 @@ export default function NotificationsScreen({
               Khi có thông báo mới, chúng sẽ xuất hiện tại đây.
             </Text>
           </View>
+        }
+        ListFooterComponent={
+          notificationsQuery.isFetchingNextPage ? (
+            <View className="py-4 items-center">
+              <ActivityIndicator size="small" color="#7c3aed" />
+            </View>
+          ) : null
         }
         renderItem={({ item }) => {
           const isRead = Boolean(item.isRead);
