@@ -277,7 +277,10 @@ export default function CourseDetailScreen({
 
   const instructorName = course?.instructor?.name ?? "Giảng viên";
 
-  const ratingLabel = course?.rating ? course.rating.toFixed(1) : "0.0";
+  const ratingLabel =
+    typeof course?.rating === "number" && Number.isFinite(course.rating)
+      ? course.rating.toFixed(1)
+      : "Chưa có";
   const ratingCountLabel = reviewsQuery.data?.length
     ? `${reviewsQuery.data.length} đánh giá`
     : "0 đánh giá";
@@ -431,80 +434,7 @@ export default function CourseDetailScreen({
       return;
     }
 
-    try {
-      setIsBuyingNow(true);
-
-      const ordersResult = await ordersQuery.refetch();
-      const pendingFromRefetch = (ordersResult.data ?? []).find(
-        (order) => mapOrderStatus(order) === "PENDING",
-      );
-      const pendingId = String(
-        pendingFromRefetch?.id ?? pendingOrder?.id ?? "",
-      );
-
-      if (pendingId) {
-        Alert.alert(
-          "Bạn có đơn hàng chưa hoàn tất",
-          "Bạn cần xử lý đơn hàng đang chờ trước khi mua khóa học mới. Bạn muốn đến trang thanh toán hay vào Giỏ hàng?",
-          [
-            {
-              text: "Thanh toán đơn cũ",
-              onPress: () => {
-                navigation.navigate("Checkout", { orderId: pendingId });
-              },
-            },
-            {
-              text: "Vào Giỏ hàng",
-              onPress: () => {
-                navigation.navigate("Cart");
-              },
-            },
-            {
-              text: "Hủy",
-              style: "cancel",
-            },
-          ],
-        );
-        return;
-      }
-
-      if (!course?.id) {
-        showToast("Không lấy được thông tin khóa học.");
-        return;
-      }
-
-      const response = await checkoutOrder({
-        courseId: String(course.id),
-        paymentMethod: "MOMO",
-      });
-
-      const orderId = String(response.id ?? "");
-
-      if (!orderId) {
-        showToast("Không lấy được thông tin đơn hàng.");
-        return;
-      }
-
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["orders", "my-orders"] }),
-        queryClient.invalidateQueries({ queryKey: ["orders"] }),
-        queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
-        queryClient.invalidateQueries({ queryKey: ["cart", "badge"] }),
-        queryClient.invalidateQueries({ queryKey: ["cart"] }),
-        queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
-      ]);
-
-      navigation.navigate("Checkout", { orderId });
-    } catch (error) {
-      showToast(
-        getApiErrorMessage(
-          error,
-          "Không thể tạo thanh toán. Vui lòng thử lại.",
-        ),
-      );
-    } finally {
-      setIsBuyingNow(false);
-    }
+    navigation.navigate("Checkout", { courseId: String(courseId) });
   };
 
   const handleOpenCurrentLesson = (): void => {
@@ -635,11 +565,6 @@ export default function CourseDetailScreen({
               resizeMode="cover"
             />
             <View className="absolute inset-0 bg-slate-900/35" />
-            <View className="absolute inset-0 items-center justify-center">
-              <View className="h-16 w-16 items-center justify-center rounded-full border border-white/70 bg-white/30 pl-1">
-                <Ionicons name="play" size={24} color="#ffffff" />
-              </View>
-            </View>
             {isPurchased ? (
               <View className="absolute bottom-0 left-0 right-0 bg-slate-900/50 px-4 py-3">
                 <Text className="mb-2 text-xs font-bold text-white">

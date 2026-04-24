@@ -8,7 +8,7 @@ import {
   type MaterialTopTabBarProps,
 } from "@react-navigation/material-top-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { useAuthStore } from "../store/useAuthStore";
 
@@ -69,7 +69,7 @@ export type RootStackParamList = {
     lessonTitle?: string;
   };
   Cart: undefined;
-  Checkout: { orderId?: string };
+  Checkout: { courseId?: string; fromCart?: boolean; selectedCartItemIds?: string[] };
   MyCertificates: undefined;
   OrderHistory: undefined;
   Notifications: undefined;
@@ -327,6 +327,20 @@ function InstructorTabs(): ReactElement {
 
 export default function AppNavigator(): ReactElement {
   const user = useAuthStore((state) => state.user);
+  const isHydrated = useAuthStore((state) => state.isHydrated);
+  const hydrateAuth = useAuthStore((state) => state.hydrateAuth);
+
+  useEffect(() => {
+    hydrateAuth();
+  }, [hydrateAuth]);
+
+  if (!isHydrated) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" }}>
+        <ActivityIndicator size="large" color="#7958ee" />
+      </View>
+    );
+  }
 
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
@@ -441,7 +455,7 @@ export default function AppNavigator(): ReactElement {
         <RootStack.Screen
           name="VideoLesson"
           component={VideoLessonScreen}
-          options={{
+          options={({ navigation, route }) => ({
             headerShown: true,
             title: "Video bài học",
             headerBackTitle: "",
@@ -449,12 +463,31 @@ export default function AppNavigator(): ReactElement {
             headerBackButtonMenuEnabled: false,
             animationTypeForReplace: "push",
             headerTintColor: "#2563eb",
-          }}
+            headerLeft: () => (
+              <Pressable
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                    return;
+                  }
+
+                  navigation.replace("CourseDetail", {
+                    courseId: route.params?.courseId,
+                    initialTab: "curriculum",
+                  });
+                }}
+                hitSlop={12}
+                className="h-10 w-10 items-center justify-center"
+              >
+                <Ionicons name="chevron-back" size={22} color="#2563eb" />
+              </Pressable>
+            ),
+          })}
         />
         <RootStack.Screen
           name="ArticleLesson"
           component={ArticleLessonScreen}
-          options={{
+          options={({ navigation, route }) => ({
             headerShown: true,
             title: "Bài nội dung",
             headerBackTitle: "",
@@ -462,12 +495,31 @@ export default function AppNavigator(): ReactElement {
             headerBackButtonMenuEnabled: false,
             animationTypeForReplace: "push",
             headerTintColor: "#2563eb",
-          }}
+            headerLeft: () => (
+              <Pressable
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                    return;
+                  }
+
+                  navigation.replace("CourseDetail", {
+                    courseId: route.params?.courseId,
+                    initialTab: "curriculum",
+                  });
+                }}
+                hitSlop={12}
+                className="h-10 w-10 items-center justify-center"
+              >
+                <Ionicons name="chevron-back" size={22} color="#2563eb" />
+              </Pressable>
+            ),
+          })}
         />
         <RootStack.Screen
           name="QuizLesson"
           component={QuizLessonScreen}
-          options={{
+          options={({ navigation, route }) => ({
             headerShown: true,
             title: "Bài quiz",
             headerBackTitle: "",
@@ -475,12 +527,31 @@ export default function AppNavigator(): ReactElement {
             headerBackButtonMenuEnabled: false,
             animationTypeForReplace: "push",
             headerTintColor: "#2563eb",
-          }}
+            headerLeft: () => (
+              <Pressable
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                    return;
+                  }
+
+                  navigation.replace("CourseDetail", {
+                    courseId: route.params?.courseId,
+                    initialTab: "curriculum",
+                  });
+                }}
+                hitSlop={12}
+                className="h-10 w-10 items-center justify-center"
+              >
+                <Ionicons name="chevron-back" size={22} color="#2563eb" />
+              </Pressable>
+            ),
+          })}
         />
         <RootStack.Screen
           name="AssignmentLesson"
           component={AssignmentLessonScreen}
-          options={{
+          options={({ navigation, route }) => ({
             headerShown: true,
             title: "Assignment",
             headerBackTitle: "",
@@ -488,7 +559,26 @@ export default function AppNavigator(): ReactElement {
             headerBackButtonMenuEnabled: false,
             animationTypeForReplace: "push",
             headerTintColor: "#2563eb",
-          }}
+            headerLeft: () => (
+              <Pressable
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                    return;
+                  }
+
+                  navigation.replace("CourseDetail", {
+                    courseId: route.params?.courseId,
+                    initialTab: "curriculum",
+                  });
+                }}
+                hitSlop={12}
+                className="h-10 w-10 items-center justify-center"
+              >
+                <Ionicons name="chevron-back" size={22} color="#2563eb" />
+              </Pressable>
+            ),
+          })}
         />
       </RootStack.Group>
     </RootStack.Navigator>

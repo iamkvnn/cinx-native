@@ -35,6 +35,7 @@ export class CourseControllerService {
         size = 10,
         query,
         sort,
+        sortBy,
         status,
         categoryId,
         instructorId,
@@ -42,7 +43,11 @@ export class CourseControllerService {
         page?: number,
         size?: number,
         query?: string,
+        /**
+         * @deprecated Use sortBy (backend expects sortBy)
+         */
         sort?: string,
+        sortBy?: string,
         status?: 'DRAFT' | 'WAITING_APPROVAL' | 'PUBLISHED' | 'REJECTED' | 'ARCHIVED',
         categoryId?: string,
         instructorId?: string,
@@ -52,7 +57,8 @@ export class CourseControllerService {
                 'page': page,
                 'size': size,
                 'query': query,
-                'sort': sort,
+                // Backend uses sortBy, not sort.
+                'sortBy': sortBy ?? sort,
                 'status': status,
                 'categoryId': categoryId,
                 'instructorId': instructorId,

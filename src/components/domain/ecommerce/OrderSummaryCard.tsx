@@ -4,7 +4,7 @@ import { type ReactElement } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 interface OrderSummaryCardProps {
-  orderCode: string;
+  orderCode?: string;
   courseCount: number;
   orderTotalPrice: number;
   coursePromotionDiscount: number;
@@ -45,14 +45,16 @@ export default function OrderSummaryCard({
       </View>
 
       <View className="gap-2">
-        <View className="flex-row items-center justify-between">
-          <Text className="text-xs font-semibold text-slate-500">Mã đơn</Text>
-          <View className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1">
-            <Text className="text-xs font-bold tracking-wide text-slate-700">
-              {orderCode}
-            </Text>
+        {orderCode && orderCode !== "N/A" ? (
+          <View className="flex-row items-center justify-between">
+            <Text className="text-xs font-semibold text-slate-500">Mã đơn</Text>
+            <View className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1">
+              <Text className="text-xs font-bold tracking-wide text-slate-700">
+                {orderCode}
+              </Text>
+            </View>
           </View>
-        </View>
+        ) : null}
 
         <View className="flex-row items-center justify-between">
           <Text className="text-xs font-semibold text-slate-500">

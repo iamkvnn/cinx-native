@@ -23,6 +23,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { CourseDetailResponse } from "@/types";
 import LessonDrawer from "../../components/course/LessonDrawer";
+import CertificateCongratulationModal from "../../components/course/CertificateCongratulationModal";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import env from "../../env";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
@@ -102,6 +103,8 @@ export default function VideoLessonScreen({
   );
   const [isOpeningBrowser, setIsOpeningBrowser] = useState(false);
   const [isLessonDrawerOpen, setIsLessonDrawerOpen] = useState(false);
+  const [showCongratsModal, setShowCongratsModal] = useState(false);
+  const [isRequestingCert, setIsRequestingCert] = useState(false);
   const resumeAppliedRef = useRef(false);
   const lastSyncedPositionRef = useRef(0);
   const isSavingRef = useRef(false);
@@ -249,6 +252,22 @@ export default function VideoLessonScreen({
     },
   });
 
+  const handleRequestCertificate = async () => {
+    if (isRequestingCert) return;
+    try {
+      setIsRequestingCert(true);
+      await CertificateControllerService.applyForCertificate({ courseId });
+      await queryClient.invalidateQueries({ queryKey: ["my-certificate", courseId] });
+      setShowCongratsModal(false);
+      Alert.alert("Thành công", "Yêu cầu cấp chứng chỉ đã được gửi.");
+    } catch (error: any) {
+      const msg = error.response?.data?.message || "Không thể gửi yêu cầu.";
+      Alert.alert("Thông báo", msg);
+    } finally {
+      setIsRequestingCert(false);
+    }
+  };
+
   const completeLessonMutation = useMutation({
     mutationFn: async () => {
       await LearningProgressControllerService.markItemAsComplete({
@@ -263,6 +282,28 @@ export default function VideoLessonScreen({
         }),
         queryClient.invalidateQueries({ queryKey: ["course-detail"] }),
       ]);
+
+      // Check if this was the last lesson
+      if (courseQuery.data) {
+        const allLessons = courseQuery.data.sections?.flatMap(s => s.lessons || []) || [];
+        const lid = String(lessonId);
+        const newCompletedIds = [...completedLessonIds];
+        if (!newCompletedIds.includes(lid)) {
+          newCompletedIds.push(lid);
+        }
+
+        if (allLessons.length > 0 && newCompletedIds.length === allLessons.length) {
+          // Check if already has a certificate request
+          try {
+            const certRes = await CertificateControllerService.getMyCertificate({ courseId });
+            if (!certRes.data) {
+              setShowCongratsModal(true);
+            }
+          } catch {
+            setShowCongratsModal(true);
+          }
+        }
+      }
     },
   });
 
@@ -594,6 +635,14 @@ export default function VideoLessonScreen({
         completedLessonIds={completedLessonIds}
         onClose={() => setIsLessonDrawerOpen(false)}
         onSelectLesson={handleSelectLessonFromDrawer}
+      />
+
+      <CertificateCongratulationModal
+        visible={showCongratsModal}
+        courseTitle={courseQuery.data?.title || "Khóa học"}
+        onClose={() => setShowCongratsModal(false)}
+        onRequestCertificate={handleRequestCertificate}
+        isProcessing={isRequestingCert}
       />
     </SafeAreaView>
   );

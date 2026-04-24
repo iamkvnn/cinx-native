@@ -4,6 +4,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { ReactElement } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -15,7 +16,9 @@ import AppScreenBackground from "../../components/ui/layout/AppScreenBackground"
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { CertificateControllerService } from "../../services/api/CertificateControllerService";
 import { VoucherControllerService } from "../../services/api/VoucherControllerService";
+import { fetchMyCertificates } from "../../services/api/myLearningApi";
 import type { CertificateRequestResponse, VoucherResponse } from "@/types";
+import type { CompletedCourse } from "../../types/myLearning";
 
 type CertificateScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -60,12 +63,13 @@ export function MyCertificatesScreen(
 ): ReactElement {
   const certificatesQuery = useQuery({
     queryKey: ["profile", "my-certificates"],
-    queryFn: () => CertificateControllerService.getMyCertificates(),
+    queryFn: () => fetchMyCertificates(),
     retry: false,
   });
 
-  const certificates = (certificatesQuery.data?.data ??
-    []) as CertificateRequestResponse[];
+  const certificates = (Array.isArray(certificatesQuery.data)
+    ? certificatesQuery.data
+    : []) as CompletedCourse[];
 
   return (
     <SafeAreaView className="flex-1 bg-transparent">
@@ -112,40 +116,74 @@ export function MyCertificatesScreen(
             </Text>
           </View>
         ) : (
-          <View className="mx-6 mb-10 gap-3">
+          <View className="mx-6 mb-10 gap-4">
             {certificates.map((certificate) => {
-              const status = mapCertificateStatus(certificate.status);
+              const isApproved = certificate.statusLabel === "Đã cấp chứng chỉ";
+              const isRejected = certificate.statusLabel === "Bị từ chối";
 
               return (
                 <View
-                  key={String(
-                    certificate.id ??
-                      `${certificate.courseId}-${certificate.requestedAt}`,
-                  )}
-                  className="rounded-3xl border border-white/70 bg-white/75 p-4"
+                  key={certificate.id}
+                  className="overflow-hidden rounded-[24px] bg-white/80 p-3"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.8)",
+                  }}
                 >
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-sm font-black text-slate-800">
-                      Khóa học #{certificate.courseId ?? "--"}
-                    </Text>
-                    <Text
-                      className={`text-xs font-bold ${status.colorClassName}`}
-                    >
-                      {status.label}
-                    </Text>
+                  <View className="flex-row items-center gap-4">
+                    <View className="h-20 w-20 shadow-sm">
+                      <View className="absolute inset-0 items-center justify-center rounded-2xl bg-slate-100">
+                        <Ionicons name="image-outline" size={24} color="#94a3b8" />
+                      </View>
+                      {certificate.imageUrl ? (
+                        <Image
+                          source={{ uri: certificate.imageUrl }}
+                          className="h-full w-full rounded-2xl"
+                          resizeMode="cover"
+                        />
+                      ) : null}
+                    </View>
+
+                    <View className="flex-1">
+                      <View className="flex-row items-center justify-between">
+                        <View
+                          className={`rounded-full px-2 py-0.5 ${
+                            isApproved
+                              ? "bg-emerald-50"
+                              : isRejected
+                                ? "bg-red-50"
+                                : "bg-amber-50"
+                          }`}
+                        >
+                          <Text
+                            className={`text-[9px] font-black uppercase tracking-wider ${
+                              isApproved
+                                ? "text-emerald-600"
+                                : isRejected
+                                  ? "text-red-600"
+                                  : "text-amber-600"
+                            }`}
+                          >
+                            {certificate.statusLabel}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text
+                        className="mt-1 text-[15px] font-black leading-tight text-slate-800"
+                        numberOfLines={2}
+                      >
+                        {certificate.title}
+                      </Text>
+
+                      <View className="mt-2 flex-row items-center gap-1">
+                        <Ionicons name="time-outline" size={12} color="#94a3b8" />
+                        <Text className="text-[10px] font-bold text-slate-400">
+                          {certificate.completedDate}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                  <Text className="mt-2 text-xs text-slate-500">
-                    Yêu cầu: {formatDate(certificate.requestedAt)}
-                  </Text>
-                  <Text className="mt-1 text-xs text-slate-500">
-                    Duyệt: {formatDate(certificate.approvedAt)}
-                  </Text>
-                  <Text
-                    className="mt-1 text-xs text-slate-500"
-                    numberOfLines={1}
-                  >
-                    URL: {certificate.certificateUrl ?? "--"}
-                  </Text>
                 </View>
               );
             })}

@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import * as ImagePicker from "expo-image-picker";
 import { useNavigation } from "@react-navigation/native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import {
@@ -46,7 +46,7 @@ import { useAuthStore } from "../../store/useAuthStore";
 
 type ProfileScreenProps = BottomTabNavigationProp<MainTabParamList, "Profile">;
 type ModalType = "edit-profile" | "edit-avatar" | "sensitive" | null;
-type SensitiveKind = "email" | "phone" | "password";
+type SensitiveKind = "password";
 
 const FALLBACK_AVATAR = "https://i.pravatar.cc/200?img=12";
 
@@ -87,12 +87,9 @@ const isValidEmail = (email: string): boolean => {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 };
 
-const isValidPhone = (phone: string): boolean => {
-  return /^\d{9,11}$/.test(phone.trim());
-};
-
 export default function ProfileScreen(): ReactElement {
   const navigation = useNavigation<ProfileScreenProps>();
+  const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const [refreshing, setRefreshing] = useState(false);
@@ -158,14 +155,6 @@ export default function ProfileScreen(): ReactElement {
       "Chưa cập nhật"
     );
   }, [profileRecord.email, userRecord.email]);
-
-  const profilePhone = useMemo(() => {
-    return (
-      readString(userRecord.phone) ||
-      readString(profileRecord.phone) ||
-      "Chưa cập nhật"
-    );
-  }, [profileRecord.phone, userRecord.phone]);
 
   const profileAvatar = useMemo(() => {
     return (
@@ -346,7 +335,7 @@ export default function ProfileScreen(): ReactElement {
       unknown
     > | null;
 
-    useAuthStore.getState().setUser({
+    const mergedUser = {
       ...(previous ?? {}),
       ...nextUser,
       profile: {
@@ -373,7 +362,11 @@ export default function ProfileScreen(): ReactElement {
             (previous?.profile as Record<string, unknown> | undefined)?.avatar,
           ),
       },
-    });
+    };
+
+    // Keep React Query cache in sync because UI prefers userProfileQuery.data.
+    queryClient.setQueryData(["user-profile"], mergedUser);
+    useAuthStore.getState().setUser(mergedUser);
   };
 
   const handleSaveProfile = async (): Promise<void> => {
@@ -381,8 +374,9 @@ export default function ProfileScreen(): ReactElement {
       return;
     }
 
+    const nextFullName = fullNameInput.trim();
     const payload = {
-      fullName: fullNameInput.trim(),
+      fullName: nextFullName,
     };
 
     if (!payload.fullName) {
@@ -394,7 +388,13 @@ export default function ProfileScreen(): ReactElement {
       setIsSavingProfile(true);
       const updatedUser = await updateProfile(payload);
 
-      updateUserInStore(updatedUser as Record<string, unknown>);
+      // Optimistic: some backends return stale data; force UI to reflect input immediately.
+      updateUserInStore({
+        ...(updatedUser as Record<string, unknown>),
+        fullName: nextFullName,
+        name: nextFullName,
+      });
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       notify("Cập nhật hồ sơ thành công.");
       setActiveModal(null);
     } catch (error) {
@@ -436,7 +436,13 @@ export default function ProfileScreen(): ReactElement {
       setIsSavingAvatar(true);
       const updatedUser = await updateProfile(payload);
 
-      updateUserInStore(updatedUser as Record<string, unknown>);
+      // Optimistic: show chosen URL/local image instantly, then refetch to get canonical avatarUrl.
+      updateUserInStore({
+        ...(updatedUser as Record<string, unknown>),
+        avatar: avatarUri,
+        avatarUrl: avatarUri,
+      });
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       notify("Cập nhật ảnh đại diện thành công.");
       setActiveModal(null);
     } catch (error) {
@@ -484,29 +490,26 @@ export default function ProfileScreen(): ReactElement {
     }
 
     const value = sensitiveValue.trim();
+    const currentEmail = activeUser?.email;
 
     if (sensitiveKind === "email" && !isValidEmail(value)) {
-      notify("Email không hợp lệ.");
+      notify("Email mới không hợp lệ.");
       return;
     }
 
-    if (sensitiveKind === "phone" && !isValidPhone(value)) {
-      notify("Số điện thoại phải gồm 9-11 chữ số.");
+    if (!currentEmail) {
+      notify("Không tìm thấy email hiện tại của bạn.");
       return;
     }
 
     try {
       setIsSendingSensitiveOtp(true);
-      const payload =
-        sensitiveKind === "email"
-          ? { email: value }
-          : sensitiveKind === "phone"
-            ? { phone: value }
-            : {};
+      // For changing email, we send OTP to the CURRENT email to verify identity
+      const payload = sensitiveKind === "email" ? { email: currentEmail } : {};
 
       await sendUpdateOtp(payload);
       setSensitiveStep(2);
-      notify("OTP đã được gửi.");
+      notify(`OTP đã được gửi tới ${currentEmail}`);
     } catch (error) {
       Alert.alert(
         "Không thể gửi OTP",
@@ -554,16 +557,19 @@ export default function ProfileScreen(): ReactElement {
         otp,
         oldPassword: sensitiveKind === "password" ? currentPassword : undefined,
         newEmail: sensitiveKind === "email" ? value : undefined,
-        newPhone: sensitiveKind === "phone" ? value : undefined,
         newPassword: sensitiveKind === "password" ? nextPassword : undefined,
       });
 
-      if (sensitiveKind === "email" || sensitiveKind === "phone") {
-        updateUserInStore({
+      if (sensitiveKind === "email") {
+        const nextUser = {
           ...(updatedUser as Record<string, unknown>),
-          ...(sensitiveKind === "email" ? { email: value } : { phone: value }),
-        });
+          email: value,
+        };
+        updateUserInStore(nextUser);
       }
+
+      await queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      await userProfileQuery.refetch();
 
       Alert.alert("Cập nhật thành công!", "Thông tin đã được lưu.");
       setActiveModal(null);
@@ -724,20 +730,6 @@ export default function ProfileScreen(): ReactElement {
             onPress={openEditProfileModal}
           />
           <MenuItem
-            icon="mail"
-            title="Đổi email (OTP)"
-            color="violet"
-            showLeadingIcon={false}
-            onPress={() => openSensitiveModal("email")}
-          />
-          <MenuItem
-            icon="call"
-            title="Đổi số điện thoại (OTP)"
-            color="blue"
-            showLeadingIcon={false}
-            onPress={() => openSensitiveModal("phone")}
-          />
-          <MenuItem
             icon="lock-closed"
             title="Đổi mật khẩu"
             color="orange"
@@ -807,7 +799,7 @@ export default function ProfileScreen(): ReactElement {
                         ? "Đổi ảnh đại diện"
                         : sensitiveKind === "password"
                           ? "Đổi mật khẩu"
-                          : `Đổi ${sensitiveKind === "email" ? "email" : "số điện thoại"}`}
+                          : "Đổi email"}
                   </Text>
                   <Pressable
                     onPress={closeModal}
@@ -979,8 +971,6 @@ export default function ProfileScreen(): ReactElement {
                           <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                             {sensitiveKind === "email"
                               ? "Email mới"
-                              : sensitiveKind === "phone"
-                                ? "Số điện thoại mới"
                                 : "Mật khẩu mới"}
                           </Text>
                           <TextInput
@@ -990,22 +980,29 @@ export default function ProfileScreen(): ReactElement {
                             placeholder={
                               sensitiveKind === "email"
                                 ? "abc@email.com"
-                                : sensitiveKind === "phone"
-                                  ? "0987654321"
-                                  : "Nhập mật khẩu mới"
+                                : "Nhập mật khẩu mới"
                             }
                             keyboardType={
                               sensitiveKind === "email"
                                 ? "email-address"
-                                : sensitiveKind === "phone"
-                                  ? "phone-pad"
-                                  : "default"
+                                : "default"
                             }
                             secureTextEntry={false}
                             autoCapitalize="none"
                             className="mt-1 text-sm font-semibold text-slate-800"
                           />
                         </View>
+
+                        {sensitiveKind === "email" && (
+                          <View className="mb-4 px-2">
+                            <Text className="text-[11px] font-medium leading-4 text-slate-500">
+                              * Hệ thống sẽ gửi mã xác thực (OTP) tới email hiện tại:{" "}
+                              <Text className="font-bold text-slate-700">
+                                {activeUser?.email}
+                              </Text>
+                            </Text>
+                          </View>
+                        )}
 
                         <Pressable
                           onPress={() => {

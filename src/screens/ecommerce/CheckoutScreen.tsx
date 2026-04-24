@@ -31,13 +31,13 @@ import { fetchCurrentUser } from "../../services/api/authApi";
 import {
   checkPaymentPaid,
   confirmPayment,
-  cancelOrder,
-  getOrderById,
-  recreateOrderWithVoucher,
-  type OrderDetailItemApi,
 } from "../../services/api/orderApi";
 import { useAuthStore } from "../../store/useAuthStore";
 import { VoucherControllerService } from "../../services/api/VoucherControllerService";
+import { CourseControllerService } from "../../services/api/CourseControllerService";
+import { CartControllerService } from "../../services/api/CartControllerService";
+import { OrderControllerService } from "../../services/api/OrderControllerService";
+import type { CartItemDto, CourseResponse, VoucherResponse } from "@/types";
 
 type CheckoutScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -78,14 +78,6 @@ const notify = (message: string): void => {
   Alert.alert("Thông báo", message);
 };
 
-const isPendingOrderStatus = (status: unknown): boolean => {
-  return (
-    String(status ?? "")
-      .trim()
-      .toLowerCase() === "pending"
-  );
-};
-
 export default function CheckoutScreen({
   route,
   navigation,
@@ -98,97 +90,106 @@ export default function CheckoutScreen({
   const [isWaitingPaymentResult, setIsWaitingPaymentResult] = useState(false);
   const [voucherCodeInput, setVoucherCodeInput] = useState("");
   const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
-  const [isRemovingVoucher, setIsRemovingVoucher] = useState(false);
+  const [appliedVoucher, setAppliedVoucher] = useState<VoucherResponse | null>(null);
   const [voucherHint, setVoucherHint] = useState("");
+  const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const paidHandledRef = useRef(false);
 
-  const orderId = String(route.params?.orderId ?? "").trim();
-  const isValidOrderId = orderId.length > 0;
+  const { courseId, fromCart, selectedCartItemIds } = route.params;
 
-  const orderQuery = useQuery({
-    queryKey: ["order", "detail", orderId],
-    queryFn: () => getOrderById(orderId),
-    enabled: isValidOrderId,
-    refetchInterval: isWaitingPaymentResult ? 5000 : false,
+  const checkoutDataQuery = useQuery({
+    queryKey: ["checkout-data", { courseId, fromCart }],
+    queryFn: async () => {
+      if (courseId) {
+        const res = await CourseControllerService.getCourseById({ id: courseId });
+        if (!res.data) throw new Error("Không tìm thấy khóa học.");
+        return {
+          items: [{ 
+            id: String(res.data.id), 
+            course: res.data as unknown as CourseResponse 
+          } as CartItemDto],
+          type: "single"
+        };
+      } else if (fromCart) {
+        const res = await CartControllerService.getCart();
+        let items = res.data || [];
+        
+        // Filter by selected IDs if provided
+        if (selectedCartItemIds && selectedCartItemIds.length > 0) {
+          items = items.filter(item => selectedCartItemIds.includes(String(item.id)));
+        }
+
+        return {
+          items: items.map(item => ({
+            id: String(item.id),
+            course: item.course as CourseResponse
+          })) as CartItemDto[],
+          type: "cart"
+        };
+      }
+      throw new Error("Không có thông tin thanh toán.");
+    },
   });
 
-  const orderItems = useMemo<OrderDetailItemApi[]>(() => {
-    return Array.isArray(orderQuery.data?.details)
-      ? orderQuery.data.details
-      : [];
-  }, [orderQuery.data?.details]);
+  const checkoutItems = checkoutDataQuery.data?.items ?? [];
 
-  const totalAmount = useMemo<number>(() => {
-    const fromApi = Number(
-      orderQuery.data?.totalAmount ?? orderQuery.data?.total_amount ?? 0,
-    );
-
-    if (Number.isFinite(fromApi) && fromApi > 0) {
-      return fromApi;
-    }
-
-    return orderItems.reduce((sum, item) => {
-      const price = Number(
-        item.finalPrice ??
-          item.final_price ??
-          item.unitPrice ??
-          item.unit_price ??
-          0,
-      );
-      return sum + (Number.isFinite(price) ? price : 0);
+  const subtotalAmount = useMemo(() => {
+    return checkoutItems.reduce((sum, item) => {
+      const price = Number(item.course?.discountedPrice ?? item.course?.price ?? 0);
+      return sum + price;
     }, 0);
-  }, [orderItems, orderQuery.data?.totalAmount, orderQuery.data?.total_amount]);
+  }, [checkoutItems]);
 
-  const orderCode = `EDUF-${orderId.padStart(6, "0")}`;
-  const isOrderPending = isPendingOrderStatus(orderQuery.data?.status);
-  const appliedVoucherCode = String(
-    orderQuery.data?.voucher?.code ?? "",
-  ).trim();
-  const voucherDiscountAmount = Math.max(
-    0,
-    Number(orderQuery.data?.voucher?.discountAmount ?? 0),
-  );
-  const serverDiscountAmount = Math.max(
-    0,
-    Number(orderQuery.data?.discounted ?? 0),
-  );
-  const coursePromotionDiscount = Math.max(
-    0,
-    serverDiscountAmount - voucherDiscountAmount,
-  );
-  const subtotalAfterServerDiscount = Math.max(
-    0,
-    totalAmount - serverDiscountAmount,
-  );
-  const finalPrice = Math.max(0, subtotalAfterServerDiscount);
+  const voucherDiscountAmount = useMemo(() => {
+    if (!appliedVoucher) return 0;
+    
+    const discountType = String(appliedVoucher.discountType ?? "").toUpperCase();
+    const discountValue = Number(appliedVoucher.discountValue ?? 0);
+    const maxDiscount = Number(appliedVoucher.maxDiscountAmount ?? Infinity);
 
-  useEffect(() => {
-    setVoucherCodeInput(appliedVoucherCode);
-  }, [appliedVoucherCode]);
+    if (discountType === "FIXED") {
+      return Math.min(discountValue, subtotalAmount);
+    } else if (discountType === "PERCENTAGE") {
+      const calculated = (subtotalAmount * discountValue) / 100;
+      return Math.min(calculated, maxDiscount, subtotalAmount);
+    }
+    
+    return 0;
+  }, [appliedVoucher, subtotalAmount]);
+
+  const finalPrice = Math.max(0, subtotalAmount - voucherDiscountAmount);
 
   const finalizePaidOrder = async (): Promise<void> => {
-    if (paidHandledRef.current) {
-      return;
-    }
-
+    if (paidHandledRef.current) return;
     paidHandledRef.current = true;
     setIsWaitingPaymentResult(false);
 
-    await Promise.all([
+    const invalidations = [
       queryClient.invalidateQueries({ queryKey: ["cart", "list"] }),
       queryClient.invalidateQueries({ queryKey: ["cart", "badge"] }),
       queryClient.invalidateQueries({ queryKey: ["orders", "my-orders"] }),
-      queryClient.invalidateQueries({
-        queryKey: ["order", "detail", orderId],
-      }),
       queryClient.invalidateQueries({ queryKey: ["user-profile"] }),
-    ]);
+    ];
+
+    if (fromCart) {
+      try {
+        if (selectedCartItemIds && selectedCartItemIds.length > 0) {
+          await CartControllerService.removeFromCart1({ itemIds: selectedCartItemIds });
+        } else {
+          await CartControllerService.clearCart();
+        }
+      } catch (err) {
+        console.warn("Failed to clear/update cart after checkout:", err);
+      }
+    }
+
+    await Promise.all(invalidations);
 
     try {
       const freshUser = await fetchCurrentUser();
       useAuthStore.getState().setUser(freshUser);
     } catch {
-      // Keep checkout flow successful even when profile refresh fails.
+      // Ignore
     }
 
     notify("Thanh toán thành công!");
@@ -196,21 +197,15 @@ export default function CheckoutScreen({
   };
 
   useEffect(() => {
-    if (!isWaitingPaymentResult || !isValidOrderId) {
-      return;
-    }
+    if (!isWaitingPaymentResult || !createdOrderId) return;
 
     const backendMethod = selectedMethod === "momo" ? "MOMO" : "VN_PAY";
 
     const syncPaymentStatus = async (): Promise<void> => {
-      const paid = await checkPaymentPaid(orderId, backendMethod);
-
+      const paid = await checkPaymentPaid(createdOrderId, backendMethod);
       if (paid) {
         await finalizePaidOrder();
-        return;
       }
-
-      await orderQuery.refetch();
     };
 
     const intervalId = setInterval(() => {
@@ -218,77 +213,57 @@ export default function CheckoutScreen({
     }, 5000);
 
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        void syncPaymentStatus();
-      }
+      if (state === "active") void syncPaymentStatus();
     });
 
     return () => {
       clearInterval(intervalId);
       subscription.remove();
     };
-  }, [
-    finalizePaidOrder,
-    isValidOrderId,
-    isWaitingPaymentResult,
-    orderId,
-    orderQuery,
-    selectedMethod,
-  ]);
-
-  useEffect(() => {
-    if (!isWaitingPaymentResult || paidHandledRef.current) {
-      return;
-    }
-
-    if (!isOrderPending) {
-      void finalizePaidOrder();
-    }
-  }, [isWaitingPaymentResult, isOrderPending]);
+  }, [isWaitingPaymentResult, createdOrderId, selectedMethod]);
 
   const handleConfirmPayment = async (): Promise<void> => {
-    if (!isValidOrderId || isProcessing) {
-      return;
-    }
-
-    if (!isOrderPending) {
-      notify("Đơn hàng không còn ở trạng thái chờ thanh toán.");
-      return;
-    }
+    if (isProcessing) return;
 
     try {
       setIsProcessing(true);
+      
+      // 1. Create order
+      const orderResponse = await OrderControllerService.createOrder({
+        requestBody: {
+          cartItems: checkoutItems,
+          paymentMethod: selectedMethod === "momo" ? "MOMO" : "VN_PAY",
+          voucherCode: appliedVoucher?.code || undefined,
+        }
+      });
+
+      const order = orderResponse.data;
+      if (!order?.id) throw new Error("Không thể tạo đơn hàng.");
+
+      const orderId = String(order.id);
+      setCreatedOrderId(orderId);
+
+      // 2. Confirm payment
       const result = await confirmPayment(orderId, {
         useRewardPoints: false,
         paymentMethod: selectedMethod === "momo" ? "MOMO" : "VN_PAY",
+        skipCheckExisting: true,
       });
 
       if (!result.isPaid) {
         setIsWaitingPaymentResult(true);
-
         if (result.paymentUrl) {
           const canOpen = await Linking.canOpenURL(result.paymentUrl);
-
           if (canOpen) {
             await Linking.openURL(result.paymentUrl);
           }
-
-          notify(
-            "Đã tạo phiên thanh toán. Vui lòng hoàn tất thanh toán trên cổng thanh toán.",
-          );
+          notify("Đã tạo phiên thanh toán. Vui lòng hoàn tất thanh toán trên cổng thanh toán.");
         } else {
-          notify(
-            "Đã gửi yêu cầu thanh toán. Vui lòng kiểm tra lại trạng thái đơn hàng.",
-          );
+          notify("Đã gửi yêu cầu thanh toán. Vui lòng kiểm tra lại trạng thái đơn hàng.");
         }
-
-        await queryClient.invalidateQueries({
-          queryKey: ["order", "detail", orderId],
-        });
-        return;
+      } else {
+        await finalizePaidOrder();
       }
-
-      await finalizePaidOrder();
     } catch (error) {
       Alert.alert(
         "Thanh toán thất bại",
@@ -300,22 +275,10 @@ export default function CheckoutScreen({
   };
 
   const handleApplyVoucher = async (): Promise<void> => {
-    if (!isOrderPending || isApplyingVoucher || isRemovingVoucher) {
-      return;
-    }
-
+    if (isApplyingVoucher) return;
     const code = voucherCodeInput.trim();
-
     if (!code) {
       setVoucherHint("Vui lòng nhập mã voucher.");
-      return;
-    }
-
-    if (
-      appliedVoucherCode &&
-      appliedVoucherCode.toLowerCase() === code.toLowerCase()
-    ) {
-      setVoucherHint("Voucher này đã được áp dụng.");
       return;
     }
 
@@ -323,10 +286,8 @@ export default function CheckoutScreen({
       setIsApplyingVoucher(true);
       setVoucherHint("");
 
-      const voucherResponse = await VoucherControllerService.getVoucherByCode({
-        code,
-      });
-      const voucher = voucherResponse.data;
+      const res = await VoucherControllerService.getVoucherByCode({ code });
+      const voucher = res.data;
 
       if (!voucher) {
         setVoucherHint("Không tìm thấy voucher.");
@@ -334,39 +295,26 @@ export default function CheckoutScreen({
       }
 
       const minPurchase = Number(voucher.minPurchaseAmount ?? 0);
-      if (minPurchase > 0 && totalAmount < minPurchase) {
-        setVoucherHint(
-          `Đơn hàng cần tối thiểu ${formatVnd(minPurchase)} để áp dụng mã này.`,
-        );
+      if (minPurchase > 0 && subtotalAmount < minPurchase) {
+        setVoucherHint(`Đơn hàng cần tối thiểu ${formatVnd(minPurchase)} để áp dụng mã này.`);
         return;
       }
 
       const now = Date.now();
-      const validFrom = voucher.validFrom
-        ? new Date(voucher.validFrom).getTime()
-        : null;
-      const validTo = voucher.validTo
-        ? new Date(voucher.validTo).getTime()
-        : null;
+      const validFrom = voucher.validFrom ? new Date(voucher.validFrom).getTime() : null;
+      const validTo = voucher.validTo ? new Date(voucher.validTo).getTime() : null;
 
-      if (validFrom && Number.isFinite(validFrom) && now < validFrom) {
+      if (validFrom && now < validFrom) {
         setVoucherHint("Voucher chưa đến thời gian áp dụng.");
         return;
       }
-
-      if (validTo && Number.isFinite(validTo) && now > validTo) {
+      if (validTo && now > validTo) {
         setVoucherHint("Voucher đã hết hạn.");
         return;
       }
 
-      const recreated = await recreateOrderWithVoucher({
-        orderId,
-        voucherCode: code,
-        paymentMethod: selectedMethod === "momo" ? "MOMO" : "VN_PAY",
-      });
-
+      setAppliedVoucher(voucher);
       setVoucherHint(`Đã áp dụng voucher ${code.toUpperCase()}.`);
-      navigation.replace("Checkout", { orderId: String(recreated.id ?? "") });
     } catch (error) {
       setVoucherHint(getApiErrorMessage(error, "Không thể áp dụng voucher."));
     } finally {
@@ -374,71 +322,13 @@ export default function CheckoutScreen({
     }
   };
 
-  const handleRemoveVoucher = async (): Promise<void> => {
-    if (
-      !isOrderPending ||
-      !appliedVoucherCode ||
-      isApplyingVoucher ||
-      isRemovingVoucher
-    ) {
-      return;
-    }
-
-    try {
-      setIsRemovingVoucher(true);
-      setVoucherHint("");
-
-      const recreated = await recreateOrderWithVoucher({
-        orderId,
-        voucherCode: undefined,
-        paymentMethod: selectedMethod === "momo" ? "MOMO" : "VN_PAY",
-      });
-
-      setVoucherCodeInput("");
-      setVoucherHint("Đã bỏ voucher khỏi đơn hàng.");
-      navigation.replace("Checkout", { orderId: String(recreated.id ?? "") });
-    } catch (error) {
-      setVoucherHint(getApiErrorMessage(error, "Không thể bỏ voucher."));
-    } finally {
-      setIsRemovingVoucher(false);
-    }
+  const handleRemoveVoucher = () => {
+    setAppliedVoucher(null);
+    setVoucherCodeInput("");
+    setVoucherHint("Đã bỏ voucher.");
   };
 
-  const handleCancelOrder = (): void => {
-    if (!isValidOrderId || isProcessing) {
-      return;
-    }
-
-    Alert.alert("Hủy đơn hàng", "Bạn có chắc muốn hủy đơn hàng này?", [
-      {
-        text: "Không",
-        style: "cancel",
-      },
-      {
-        text: "Hủy đơn",
-        style: "destructive",
-        onPress: () => {
-          void (async () => {
-            try {
-              setIsProcessing(true);
-              await cancelOrder(orderId);
-              notify("Đã hủy đơn hàng.");
-              navigation.goBack();
-            } catch (error) {
-              Alert.alert(
-                "Hủy đơn thất bại",
-                getApiErrorMessage(error, "Không thể hủy đơn hàng."),
-              );
-            } finally {
-              setIsProcessing(false);
-            }
-          })();
-        },
-      },
-    ]);
-  };
-
-  if (orderQuery.isLoading) {
+  if (checkoutDataQuery.isLoading) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-transparent">
         <AppScreenBackground />
@@ -447,37 +337,18 @@ export default function CheckoutScreen({
     );
   }
 
-  if (!isValidOrderId) {
+  if (checkoutDataQuery.isError || !checkoutDataQuery.data) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-transparent px-8">
         <AppScreenBackground />
         <Text className="text-center text-base font-bold text-slate-800">
-          Mã đơn hàng không hợp lệ.
+          {getApiErrorMessage(checkoutDataQuery.error, "Không thể tải thông tin thanh toán.")}
         </Text>
         <Pressable
           className="mt-5 rounded-full bg-violet-600 px-6 py-3"
           onPress={() => navigation.goBack()}
         >
           <Text className="text-sm font-bold text-white">Quay lại</Text>
-        </Pressable>
-      </SafeAreaView>
-    );
-  }
-
-  if (orderQuery.isError || !orderQuery.data) {
-    return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-transparent px-8">
-        <AppScreenBackground />
-        <Text className="text-center text-base font-bold text-slate-800">
-          Không thể tải chi tiết đơn hàng.
-        </Text>
-        <Pressable
-          className="mt-5 rounded-full bg-violet-600 px-6 py-3"
-          onPress={() => {
-            void orderQuery.refetch();
-          }}
-        >
-          <Text className="text-sm font-bold text-white">Thử lại</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -494,65 +365,38 @@ export default function CheckoutScreen({
       >
         <View className="mb-4 overflow-hidden rounded-[24px] border border-white/70 bg-white/75 p-4">
           <Text className="text-sm font-bold text-slate-800">
-            Thông tin nhận khóa học
+            Thông tin đơn hàng
           </Text>
-          <View className="mt-2 flex-row items-center justify-between gap-2">
-            <Text className="text-xs font-semibold text-slate-500">Mã đơn</Text>
-            <View className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1">
-              <Text className="text-xs font-bold tracking-wide text-slate-700">
-                {orderCode}
-              </Text>
-            </View>
-          </View>
-          <Text className="mt-2 text-sm font-semibold text-slate-700">
-            Trạng thái:{" "}
-            {String(orderQuery.data.status ?? "pending").toUpperCase()}
+          <Text className="mt-2 text-xs font-semibold text-slate-500">
+            {checkoutItems.length} khóa học đã chọn
           </Text>
         </View>
 
         <View className="mb-4 overflow-hidden rounded-[24px] border border-white/70 bg-white/75 p-4">
           <Text className="mb-3 text-sm font-bold text-slate-800">
-            Đơn hàng của bạn ({orderItems.length})
+            Khóa học ({checkoutItems.length})
           </Text>
 
           <View className="gap-3">
-            {orderItems.map((item) => {
-              const title = item.course?.title ?? "Khóa học";
-              const image =
-                item.course?.images?.[0]?.imageUrl ?? FALLBACK_IMAGE;
-              const instructor = item.course?.instructor?.name ?? "Giảng viên";
-              const itemPrice = Number(
-                item.finalPrice ??
-                  item.final_price ??
-                  item.unitPrice ??
-                  item.unit_price ??
-                  0,
-              );
+            {checkoutItems.map((item, index) => {
+              const course = item.course;
+              const title = course?.title ?? "Khóa học";
+              const image = course?.images?.[0]?.imageUrl ?? FALLBACK_IMAGE;
+              const instructor = course?.instructor?.name ?? "Giảng viên";
+              const price = Number(course?.discountedPrice ?? course?.price ?? 0);
 
               return (
-                <View
-                  key={String(item.id ?? `${title}-${itemPrice}`)}
-                  className="flex-row gap-3"
-                >
-                  <Image
-                    source={{ uri: image }}
-                    className="h-16 w-16 rounded-xl"
-                  />
+                <View key={String(item.id || index)} className="flex-row gap-3">
+                  <Image source={{ uri: image }} className="h-16 w-16 rounded-xl" />
                   <View className="flex-1 justify-center">
-                    <Text
-                      className="text-sm font-bold text-slate-800"
-                      numberOfLines={1}
-                    >
+                    <Text className="text-sm font-bold text-slate-800" numberOfLines={1}>
                       {title}
                     </Text>
-                    <Text
-                      className="mt-0.5 text-[11px] font-medium text-slate-500"
-                      numberOfLines={1}
-                    >
+                    <Text className="mt-0.5 text-[11px] font-medium text-slate-500" numberOfLines={1}>
                       Giảng viên: {instructor}
                     </Text>
                     <Text className="mt-1 text-sm font-black text-violet-600">
-                      {formatVnd(itemPrice)}
+                      {formatVnd(price)}
                     </Text>
                   </View>
                 </View>
@@ -576,23 +420,14 @@ export default function CheckoutScreen({
               onChangeText={setVoucherCodeInput}
               placeholder="Nhập voucher"
               autoCapitalize="characters"
-              editable={
-                isOrderPending &&
-                !isApplyingVoucher &&
-                !isRemovingVoucher &&
-                !Boolean(appliedVoucherCode)
-              }
-              className={`h-11 flex-1 rounded-xl border px-3 text-sm font-semibold ${appliedVoucherCode ? "border-slate-200 bg-slate-100 text-slate-500" : "border-slate-300 bg-white text-slate-800"}`}
+              editable={!appliedVoucher && !isApplyingVoucher}
+              className={`h-11 flex-1 rounded-xl border px-3 text-sm font-semibold ${appliedVoucher ? "border-slate-200 bg-slate-100 text-slate-500" : "border-slate-300 bg-white text-slate-800"}`}
             />
-            {!appliedVoucherCode ? (
+            {!appliedVoucher ? (
               <Pressable
-                onPress={() => {
-                  void handleApplyVoucher();
-                }}
-                disabled={
-                  !isOrderPending || isApplyingVoucher || isRemovingVoucher
-                }
-                className={`h-11 items-center justify-center rounded-xl px-4 ${!isOrderPending || isApplyingVoucher || isRemovingVoucher ? "bg-violet-300" : "bg-violet-600"}`}
+                onPress={handleApplyVoucher}
+                disabled={isApplyingVoucher}
+                className={`h-11 items-center justify-center rounded-xl px-4 ${isApplyingVoucher ? "bg-violet-300" : "bg-violet-600"}`}
               >
                 <Text className="text-xs font-bold text-white">
                   {isApplyingVoucher ? "Đang áp dụng..." : "Áp dụng"}
@@ -600,35 +435,24 @@ export default function CheckoutScreen({
               </Pressable>
             ) : (
               <Pressable
-                onPress={() => {
-                  void handleRemoveVoucher();
-                }}
-                disabled={
-                  !isOrderPending || isApplyingVoucher || isRemovingVoucher
-                }
-                className={`h-11 items-center justify-center rounded-xl px-4 ${!isOrderPending || isApplyingVoucher || isRemovingVoucher ? "bg-red-200" : "bg-red-500"}`}
+                onPress={handleRemoveVoucher}
+                className="h-11 items-center justify-center rounded-xl bg-red-500 px-4"
               >
-                <Text className="text-xs font-bold text-white">
-                  {isRemovingVoucher ? "Đang bỏ..." : "Bỏ mã"}
-                </Text>
+                <Text className="text-xs font-bold text-white">Bỏ mã</Text>
               </Pressable>
             )}
           </View>
-
           {voucherHint ? (
-            <Text className="mt-2 text-xs font-semibold text-slate-600">
-              {voucherHint}
-            </Text>
+            <Text className="mt-2 text-xs font-semibold text-slate-600">{voucherHint}</Text>
           ) : null}
         </View>
 
         <View className="mt-4">
           <OrderSummaryCard
-            orderCode={orderCode}
-            courseCount={orderItems.length}
-            orderTotalPrice={totalAmount}
-            coursePromotionDiscount={coursePromotionDiscount}
-            voucherCode={appliedVoucherCode || undefined}
+            courseCount={checkoutItems.length}
+            orderTotalPrice={subtotalAmount}
+            coursePromotionDiscount={0}
+            voucherCode={appliedVoucher?.code}
             voucherDiscountAmount={voucherDiscountAmount}
             finalPrice={finalPrice}
           />
@@ -640,51 +464,31 @@ export default function CheckoutScreen({
         style={{ paddingBottom: Math.max(insets.bottom + 8, 16) }}
       >
         <View className="mb-3 flex-row items-center justify-between px-1">
-          <Text className="text-sm font-bold text-slate-800">
-            Tổng thanh toán:
-          </Text>
+          <Text className="text-sm font-bold text-slate-800">Tổng thanh toán:</Text>
           <View className="items-end">
-            {serverDiscountAmount > 0 ? (
+            {voucherDiscountAmount > 0 ? (
               <Text className="text-xs font-semibold text-slate-400 line-through">
-                {formatVnd(totalAmount)}
+                {formatVnd(subtotalAmount)}
               </Text>
             ) : null}
-            <Text className="text-2xl font-black text-violet-600">
-              {formatVnd(finalPrice)}
-            </Text>
+            <Text className="text-2xl font-black text-violet-600">{formatVnd(finalPrice)}</Text>
           </View>
         </View>
 
         <Pressable
-          onPress={() => {
-            void handleConfirmPayment();
-          }}
-          disabled={isProcessing || !isOrderPending}
-          className={`h-14 flex-row items-center justify-center gap-2 rounded-2xl ${isProcessing || !isOrderPending ? "bg-violet-400" : "bg-violet-600"}`}
+          onPress={handleConfirmPayment}
+          disabled={isProcessing}
+          className={`h-14 flex-row items-center justify-center gap-2 rounded-2xl ${isProcessing ? "bg-violet-400" : "bg-violet-600"}`}
         >
           {isProcessing ? (
             <ActivityIndicator size="small" color="#ffffff" />
           ) : (
-            <Text className="text-base font-bold text-white">
-              Xác nhận thanh toán
-            </Text>
+            <Text className="text-base font-bold text-white">Thanh toán ngay</Text>
           )}
         </Pressable>
 
-        <Pressable
-          onPress={handleCancelOrder}
-          disabled={isProcessing}
-          className={`mt-2 h-11 items-center justify-center rounded-xl border ${isProcessing ? "border-slate-300 bg-slate-100" : "border-red-300 bg-red-50"}`}
-        >
-          <Text
-            className={`text-sm font-bold ${isProcessing ? "text-slate-400" : "text-red-600"}`}
-          >
-            Hủy đơn hàng
-          </Text>
-        </Pressable>
-
         <Text className="mt-3 text-center text-[10px] font-medium text-slate-400">
-          Bạn đang thanh toán bằng {selectedMethod.toUpperCase()}
+          Thanh toán an toàn qua cổng {selectedMethod.toUpperCase()}
         </Text>
       </View>
     </SafeAreaView>

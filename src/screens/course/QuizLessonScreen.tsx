@@ -30,6 +30,7 @@ import type {
   QuizSessionResponse,
 } from "@/types";
 import LessonDrawer from "../../components/course/LessonDrawer";
+import CertificateCongratulationModal from "../../components/course/CertificateCongratulationModal";
 import AppScreenBackground from "../../components/ui/layout/AppScreenBackground";
 import type { RootStackParamList } from "../../navigation/AppNavigator";
 import { CourseControllerService } from "../../services/api/CourseControllerService";
@@ -110,6 +111,8 @@ export default function QuizLessonScreen({
   const [timerStarted, setTimerStarted] = useState(false);
   const [isLessonCompleted, setIsLessonCompleted] = useState(false);
   const [isLessonDrawerOpen, setIsLessonDrawerOpen] = useState(false);
+  const [showCongratsModal, setShowCongratsModal] = useState(false);
+  const [isRequestingCert, setIsRequestingCert] = useState(false);
   const [quizAvailabilityMessage, setQuizAvailabilityMessage] =
     useState<string>("");
   const autoSubmittedRef = useRef(false);
@@ -355,8 +358,45 @@ export default function QuizLessonScreen({
         }),
         queryClient.invalidateQueries({ queryKey: ["course-detail"] }),
       ]);
+
+      // Check if this was the last lesson
+      if (courseQuery.data) {
+        const allLessons = courseQuery.data.sections?.flatMap(s => s.lessons || []) || [];
+        const lid = String(lessonId);
+        const newCompletedIds = [...completedLessonIds];
+        if (!newCompletedIds.includes(lid)) {
+          newCompletedIds.push(lid);
+        }
+
+        if (allLessons.length > 0 && newCompletedIds.length === allLessons.length) {
+          try {
+            const certRes = await CertificateControllerService.getMyCertificate({ courseId });
+            if (!certRes.data) {
+              setShowCongratsModal(true);
+            }
+          } catch {
+            setShowCongratsModal(true);
+          }
+        }
+      }
     },
   });
+
+  const handleRequestCertificate = async () => {
+    if (isRequestingCert) return;
+    try {
+      setIsRequestingCert(true);
+      await CertificateControllerService.applyForCertificate({ courseId });
+      await queryClient.invalidateQueries({ queryKey: ["my-certificate", courseId] });
+      setShowCongratsModal(false);
+      Alert.alert("Thành công", "Yêu cầu cấp chứng chỉ đã được gửi.");
+    } catch (error: any) {
+      const msg = error.response?.data?.message || "Không thể gửi yêu cầu.";
+      Alert.alert("Thông báo", msg);
+    } finally {
+      setIsRequestingCert(false);
+    }
+  };
 
   const questionMap = useMemo(() => {
     const map = new Map<string, QuizQuestionResponse>();
@@ -452,6 +492,15 @@ export default function QuizLessonScreen({
   const currentQuestionId = String(currentSessionQuestion?.questionId ?? "");
   const currentQuestion = questionMap.get(currentQuestionId);
   const attemptsUsed = Number(quizSessionsQuery.data?.meta?.totalElements ?? 0);
+
+  const isAllAnswered = useMemo(() => {
+    const answeredCount = Object.values(selectedAnswers).filter(
+      (val) => String(val || "").trim().length > 0,
+    ).length;
+    return (
+      sessionQuestions.length > 0 && answeredCount >= sessionQuestions.length
+    );
+  }, [selectedAnswers, sessionQuestions]);
 
   const handleNextLesson = (): void => {
     if (!nextLesson || !nextLessonRoute) {
@@ -782,25 +831,32 @@ export default function QuizLessonScreen({
                 <Text className="text-xs font-bold text-white">Câu trước</Text>
               </Pressable>
 
-              <Pressable
-                className={`h-10 rounded-xl px-4 items-center justify-center ${currentQuestionIndex >= sessionQuestions.length - 1 ? "bg-slate-200" : "bg-violet-600"}`}
-                disabled={currentQuestionIndex >= sessionQuestions.length - 1}
-                onPress={() => {
-                  setCurrentQuestionIndex((previous) =>
-                    Math.min(sessionQuestions.length - 1, previous + 1),
-                  );
-                }}
-              >
-                <Text className="text-xs font-bold text-white">Câu sau</Text>
-              </Pressable>
+              {currentQuestionIndex < sessionQuestions.length - 1 && (
+                <Pressable
+                  className="h-10 rounded-xl px-4 items-center justify-center bg-violet-600"
+                  onPress={() => {
+                    setCurrentQuestionIndex((previous) =>
+                      Math.min(sessionQuestions.length - 1, previous + 1),
+                    );
+                  }}
+                >
+                  <Text className="text-xs font-bold text-white">Câu sau</Text>
+                </Pressable>
+              )}
             </View>
           </View>
         ) : null}
 
         {quizSessionId ? (
           <Pressable
-            className="h-11 items-center justify-center rounded-2xl bg-slate-900"
-            disabled={submitMutation.isPending || Boolean(submissionResult)}
+            className={`h-11 items-center justify-center rounded-2xl ${
+              !isAllAnswered || submitMutation.isPending || Boolean(submissionResult)
+                ? "bg-slate-300"
+                : "bg-slate-900"
+            }`}
+            disabled={
+              !isAllAnswered || submitMutation.isPending || Boolean(submissionResult)
+            }
             onPress={() => {
               void handleSubmitQuiz(false);
             }}
@@ -810,7 +866,9 @@ export default function QuizLessonScreen({
                 ? "Đang nộp bài..."
                 : submissionResult
                   ? "Đã nộp"
-                  : "Nộp quiz"}
+                  : !isAllAnswered
+                    ? "Vui lòng trả lời hết các câu hỏi"
+                    : "Nộp quiz"}
             </Text>
           </Pressable>
         ) : null}
@@ -879,6 +937,14 @@ export default function QuizLessonScreen({
         completedLessonIds={completedLessonIds}
         onClose={() => setIsLessonDrawerOpen(false)}
         onSelectLesson={handleSelectLessonFromDrawer}
+      />
+
+      <CertificateCongratulationModal
+        visible={showCongratsModal}
+        courseTitle={courseQuery.data?.title || "Khóa học"}
+        onClose={() => setShowCongratsModal(false)}
+        onRequestCertificate={handleRequestCertificate}
+        isProcessing={isRequestingCert}
       />
     </SafeAreaView>
   );

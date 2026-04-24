@@ -254,36 +254,68 @@ function CompletedCourseCard({
 }: {
   course: CompletedCourse;
 }): ReactElement {
+  const isApproved = course.statusLabel === "Đã cấp chứng chỉ";
+
   return (
     <View
-      className="mb-4 flex-row items-center gap-3 rounded-[24px] bg-white/70 p-3"
-      style={styles.glassPanel}
+      className="mb-4 overflow-hidden rounded-[24px] bg-white/80 p-3"
+      style={[styles.glassPanel, { borderColor: "rgba(255,255,255,0.8)" }]}
     >
-      <View className="relative h-20 w-20 overflow-hidden rounded-2xl">
-        <Image
-          source={{ uri: course.imageUrl || FALLBACK_IMAGE }}
-          className="h-full w-full"
-          resizeMode="cover"
-        />
-        <View className="absolute inset-0 items-center justify-center bg-violet-700/30">
-          <Ionicons name="ribbon" size={26} color="white" />
+      <View className="flex-row items-center gap-4">
+        <View className="relative h-20 w-20 shadow-sm">
+          <Image
+            source={{ uri: course.imageUrl || FALLBACK_IMAGE }}
+            className="h-full w-full rounded-2xl"
+            resizeMode="cover"
+          />
+          {isApproved && (
+            <View className="absolute -right-1 -top-1 h-6 w-6 items-center justify-center rounded-full bg-emerald-500 border-2 border-white shadow-sm">
+              <Ionicons name="checkmark" size={14} color="white" />
+            </View>
+          )}
         </View>
-      </View>
 
-      <View className="flex-1">
-        <Text
-          className="mb-1 text-sm font-bold text-slate-800"
-          numberOfLines={2}
-        >
-          {course.title}
-        </Text>
-        <Text className="text-[11px] text-slate-500">
-          Ngày: {course.completedDate}
-        </Text>
-        <View className="mt-2 rounded border border-violet-200 bg-violet-50 px-2 py-0.5 self-start">
-          <Text className="text-[10px] font-bold text-violet-700">
-            {course.statusLabel ?? "Đã hoàn thành"}
-          </Text>
+        <View className="flex-1">
+          <View className="flex-row items-start justify-between">
+            <View className="flex-1 mr-2">
+              <Text
+                className="text-[15px] font-black leading-tight text-slate-800"
+                numberOfLines={2}
+              >
+                {course.title}
+              </Text>
+              <View className="mt-1.5 flex-row items-center gap-1.5">
+                <Ionicons name="calendar-outline" size={12} color="#64748b" />
+                <Text className="text-[11px] font-medium text-slate-500">
+                  {course.completedDate}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View className="mt-3 flex-row items-center justify-between">
+            <View
+              className={`rounded-full px-2.5 py-1 ${
+                isApproved
+                  ? "bg-emerald-50 border border-emerald-100"
+                  : course.statusLabel === "Bị từ chối"
+                    ? "bg-red-50 border border-red-100"
+                    : "bg-amber-50 border border-amber-100"
+              }`}
+            >
+              <Text
+                className={`text-[10px] font-bold ${
+                  isApproved
+                    ? "text-emerald-700"
+                    : course.statusLabel === "Bị từ chối"
+                      ? "text-red-700"
+                      : "text-amber-700"
+                }`}
+              >
+                {course.statusLabel}
+              </Text>
+            </View>
+          </View>
         </View>
       </View>
     </View>
@@ -412,7 +444,9 @@ export default function MyLearningScreen(): ReactElement {
     }));
   }, [realCoursesQuery.data]);
 
-  const completedCourses = certificatesQuery.data ?? [];
+  const completedCourses = (Array.isArray(certificatesQuery.data)
+    ? certificatesQuery.data
+    : []) as CompletedCourse[];
 
   const monthlyGoalMap = useMemo(() => {
     const map = new Map<number, DailyGoalResponse>();

@@ -31,6 +31,8 @@ interface CartItemCardProps {
   onRemove: (item: CartItemCardData) => Promise<void>;
   onSwipeableWillOpen?: (id: string) => void;
   setSwipeableRef?: (instance: { close: () => void } | null) => void;
+  selected?: boolean;
+  onToggleSelection?: (id: string) => void;
 }
 
 const formatVnd = (amount: number): string => {
@@ -47,6 +49,8 @@ export default function CartItemCard({
   onRemove,
   onSwipeableWillOpen,
   setSwipeableRef,
+  selected = false,
+  onToggleSelection,
 }: CartItemCardProps): ReactElement {
   const pressStartTimeRef = useRef(0);
   const pressBlockedUntilRef = useRef(0);
@@ -160,54 +164,70 @@ export default function CartItemCard({
 
         <View pointerEvents="none" style={styles.glassTint} />
 
-        <View className="flex-row gap-3 p-3">
-          <View className="h-20 w-20 overflow-hidden rounded-2xl bg-slate-200">
-            <Image
-              source={{ uri: item.imageUrl }}
-              resizeMode="cover"
-              className="h-full w-full"
-            />
-          </View>
+        <View className="flex-row items-center p-3">
+          <Pressable
+            onPress={() => onToggleSelection?.(item.cartItemId)}
+            className="mr-2 h-10 w-10 items-center justify-center"
+            hitSlop={10}
+          >
+            <View
+              className={`h-6 w-6 items-center justify-center rounded-full border-2 ${
+                selected ? "border-violet-600 bg-violet-600" : "border-slate-300"
+              }`}
+            >
+              {selected && <Ionicons name="checkmark" size={14} color="#fff" />}
+            </View>
+          </Pressable>
 
-          <View className="flex-1 justify-between py-0.5">
-            <View>
-              <Text
-                className="mb-1 text-sm font-bold leading-5 text-slate-800"
-                numberOfLines={2}
-              >
-                {item.title}
-              </Text>
-              <Text className="text-xs text-slate-500" numberOfLines={1}>
-                Bởi{" "}
-                <Text className="font-bold text-slate-700">
-                  {item.instructorName}
-                </Text>
-              </Text>
+          <View className="flex-1 flex-row gap-3">
+            <View className="h-20 w-20 overflow-hidden rounded-2xl bg-slate-200">
+              <Image
+                source={{ uri: item.imageUrl }}
+                resizeMode="cover"
+                className="h-full w-full"
+              />
             </View>
 
-            <View className="mt-2 flex-row items-end justify-between">
+            <View className="flex-1 justify-between py-0.5">
               <View>
-                {item.originalPrice && item.originalPrice > item.price ? (
-                  <Text className="text-[10px] font-semibold text-slate-400 line-through">
-                    {formatVnd(item.originalPrice)}
+                <Text
+                  className="mb-1 text-sm font-bold leading-5 text-slate-800"
+                  numberOfLines={2}
+                >
+                  {item.title}
+                </Text>
+                <Text className="text-xs text-slate-500" numberOfLines={1}>
+                  Bởi{" "}
+                  <Text className="font-bold text-slate-700">
+                    {item.instructorName}
                   </Text>
-                ) : null}
-
-                <Text className="text-base font-black text-violet-600">
-                  {formatVnd(item.price)}
                 </Text>
               </View>
 
-              <View className="rounded-full bg-violet-100 px-2.5 py-1">
-                <Text className="text-[10px] font-bold uppercase tracking-wider text-violet-700">
-                  Chi tiết
-                </Text>
+              <View className="mt-2 flex-row items-end justify-between">
+                <View>
+                  {item.originalPrice && item.originalPrice > item.price ? (
+                    <Text className="text-[10px] font-semibold text-slate-400 line-through">
+                      {formatVnd(item.originalPrice)}
+                    </Text>
+                  ) : null}
+
+                  <Text className="text-base font-black text-violet-600">
+                    {formatVnd(item.price)}
+                  </Text>
+                </View>
+
+                <View className="rounded-full bg-violet-100 px-2.5 py-1">
+                  <Text className="text-[10px] font-bold uppercase tracking-wider text-violet-700">
+                    Chi tiết
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
         </View>
 
-        <View className="absolute right-3 top-3 rounded-full bg-white/90 p-1.5">
+        <View className="absolute right-3 top-3 rounded-full bg-white/10 p-1.5">
           <Ionicons name="chevron-forward" size={14} color="#475569" />
         </View>
       </Pressable>
